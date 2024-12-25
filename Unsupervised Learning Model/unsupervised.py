@@ -55,7 +55,7 @@ def visualize_clusters(df, clusters, x_col, y_col):
 
 # Main Streamlit app
 def main():
-    st.title("K-means Clustering Analysis for Student Financial Aid Eligibility")
+    st.title('Unsupervised Learning Model:')
 
     try:
         # Load data
