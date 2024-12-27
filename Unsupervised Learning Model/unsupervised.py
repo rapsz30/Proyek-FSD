@@ -55,7 +55,7 @@ def visualize_clusters(df, clusters, x_col, y_col):
 
 # Main Streamlit app
 def main():
-    st.title('Unsupervised Learning Model:')
+    st.title('Unsupervised Learning Model: Klasifikasi Kelayakan Keringanan UKT MAHASISWA')
 
     try:
         # Load data
