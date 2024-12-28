@@ -56,7 +56,9 @@ def visualize_clusters(df, clusters, x_col, y_col):
 # Main Streamlit app
 def main():
     st.title('Unsupervised Learning Model: Klasifikasi Kelayakan Keringanan UKT MAHASISWA')
-
+    st.write('Kelompok: Sembarang Wes')
+    
+    
     try:
         # Load data
         file_path = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/klasifikasimhs-xwuq9Zr5EncwomoEdAoDI2H4qkHWHA.csv"
