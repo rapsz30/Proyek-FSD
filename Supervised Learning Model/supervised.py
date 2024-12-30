@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
@@ -14,61 +14,30 @@ from sklearn.impute import SimpleImputer
 # Load and preprocess the data
 @st.cache_data
 def load_data():
-    # Try different delimiters
-    delimiters = [',', ';', '\t']
-    data = None
-    
-    for delimiter in delimiters:
-        try:
-            data = pd.read_csv("riskchartsampledata.csv", delimiter=delimiter)
-            if len(data.columns) > 1:
-                break
-        except:
-            continue
-    
-    if data is None or len(data.columns) == 1:
-        st.error("Unable to read the CSV file correctly. Please check the file format.")
-        st.stop()
+    data = pd.read_csv("riskchartsampledata.csv", delimiter=';')
     
     # Clean column names
-    data.columns = data.columns.str.strip()
+    data.columns = data.columns.str.strip().str.split(';', expand=True)
+    data.columns = ['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 'Smoking status', 'SBP', 'Tch']
+    
+    # Split the single column into multiple columns
+    data = data.iloc[:, 0].str.split(';', expand=True)
+    data.columns = ['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 'Smoking status', 'SBP', 'Tch']
     
     # Remove any rows that are completely empty
     data = data.dropna(how='all')
     
-    # Remove any columns that are completely empty
-    data = data.dropna(axis=1, how='all')
+    # Create a copy of the data for encoding
+    data_encoded = data.copy()
     
-    # Define the expected column names
-    expected_columns = ['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 'Smoking status', 'SBP', 'Tch']
-    
-    # Check which columns are actually present in the data
-    present_columns = [col for col in expected_columns if col in data.columns]
-    
-    # Encode categorical variables and handle numeric variables
+    # Encode categorical variables for model training
     le = LabelEncoder()
-    for col in data.columns:
-        if data[col].dtype == 'object':
-            # For categorical variables, use label encoding
-            data[col] = le.fit_transform(data[col].astype(str))
-        else:
-            # For numeric variables, try to convert to float
-            try:
-                data[col] = data[col].astype(float)
-            except ValueError:
-                # If conversion fails, treat as categorical and use label encoding
-                data[col] = le.fit_transform(data[col].astype(str))
-    
-    # Ensure 'High WHR' is present, otherwise use the last column as the target
-    if 'High WHR' in data.columns:
-        target_column = 'High WHR'
-    else:
-        target_column = data.columns[-1]
-        st.warning(f"'High WHR' column not found. Using '{target_column}' as the target variable.")
+    for col in data_encoded.columns:
+        data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
     
     # Split features and target
-    X = data.drop(target_column, axis=1)
-    y = data[target_column]
+    X = data_encoded.drop('High WHR', axis=1)
+    y = data_encoded['High WHR']
     
     # Split data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -78,9 +47,7 @@ def load_data():
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
     
-    return data, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler
-
-# The rest of the code remains the same
+    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler
 
 # Train models
 @st.cache_resource
@@ -110,7 +77,7 @@ def main():
     st.title("Prediksi Risiko Penyakit Jantung")
     
     # Load data and train models
-    data, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler = load_data()
+    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler = load_data()
     lr_model, nb_model, svm_model = train_models(X_train_scaled, y_train)
     
     # Sidebar
@@ -123,13 +90,13 @@ def main():
         
         st.subheader("Visualisasi Data")
         fig, ax = plt.subplots(figsize=(10, 6))
-        sns.countplot(x=data.columns[-1], data=data)
-        plt.title(f"Distribusi {data.columns[-1]}")
+        sns.countplot(x='High WHR', data=data)
+        plt.title("Distribusi High WHR")
         st.pyplot(fig)
         
         st.subheader("Heatmap Korelasi")
         fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(data.corr(), annot=True, cmap='coolwarm', ax=ax)
+        sns.heatmap(data_encoded.corr(), annot=True, cmap='coolwarm', ax=ax)
         plt.title("Heatmap Korelasi")
         st.pyplot(fig)
         
@@ -163,36 +130,50 @@ def main():
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
         
-        # Get the actual column names from the data
-        columns = data.columns.tolist()
-        columns.remove(data.columns[-1])  # Remove the target variable
-        
-        # Create input fields dynamically based on available columns
-        input_data = {}
-        for col in columns:
-            unique_values = data[col].unique().tolist()
-            input_data[col] = st.selectbox(col, unique_values)
+        # Create input fields for each feature
+        age = st.selectbox("Age", data['Age'].unique())
+        sex = st.selectbox("Sex", data['Sex'].unique())
+        family_history = st.selectbox("Family history of CVD", data['Family history of CVD'].unique())
+        diabetes = st.selectbox("Diabetes Mellitus", data['Diabetes Mellitus'].unique())
+        smoking = st.selectbox("Smoking status", data['Smoking status'].unique())
+        sbp = st.selectbox("SBP", data['SBP'].unique())
+        tch = st.selectbox("Tch", data['Tch'].unique())
         
         if st.button("Prediksi"):
-            le = LabelEncoder()
-            input_df = pd.DataFrame([input_data])
+            # Create a DataFrame with the input data
+            input_data = pd.DataFrame({
+                'Age': [age],
+                'Sex': [sex],
+                'Family history of CVD': [family_history],
+                'Diabetes Mellitus': [diabetes],
+                'Smoking status': [smoking],
+                'SBP': [sbp],
+                'Tch': [tch]
+            })
             
-            for col in input_df.columns:
-                if data[col].dtype == 'object':
-                    input_df[col] = le.fit_transform(input_df[col].astype(str))
-                else:
-                    input_df[col] = input_df[col].astype(float)
+            # One-hot encode the input data
+            input_encoded = pd.get_dummies(input_data)
             
-            input_scaled = scaler.transform(input_df)
+            # Ensure all columns from training are present in input data
+            for col in X_train.columns:
+                if col not in input_encoded.columns:
+                    input_encoded[col] = 0
             
+            # Reorder columns to match training data
+            input_encoded = input_encoded[X_train.columns]
+            
+            # Scale the input data
+            input_scaled = scaler.transform(input_encoded)
+            
+            # Make predictions
             lr_pred = lr_model.predict_proba(input_scaled)[0][1]
             nb_pred = nb_model.predict_proba(input_scaled)[0][1]
             svm_pred = svm_model.predict_proba(input_scaled)[0][1]
             
             st.subheader("Hasil Prediksi")
-            st.write(f"Regresi Logistik: {lr_pred:.2%} risiko {data.columns[-1]}")
-            st.write(f"Naive Bayes: {nb_pred:.2%} risiko {data.columns[-1]}")
-            st.write(f"Support Vector Machine: {svm_pred:.2%} risiko {data.columns[-1]}")
+            st.write(f"Regresi Logistik: {lr_pred:.2%} risiko High WHR")
+            st.write(f"Naive Bayes: {nb_pred:.2%} risiko High WHR")
+            st.write(f"Support Vector Machine: {svm_pred:.2%} risiko High WHR")
     
     else:
         st.header("Tentang Kami")
@@ -205,6 +186,6 @@ def main():
         st.write("Mustaqim Adiyatno(23523107)")
         st.write("M. Trendo Rafly Dipu(23523116)")
         
-        
 if __name__ == "__main__":
     main()
+
