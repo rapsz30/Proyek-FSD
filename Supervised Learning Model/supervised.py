@@ -14,15 +14,17 @@ from sklearn.impute import SimpleImputer
 # Load and preprocess the data
 @st.cache_data
 def load_data():
-    data = pd.read_csv("riskchartsampledata.csv", delimiter=';')
+    # Read the CSV file
+    data = pd.read_csv("riskchartsampledata.csv", header=None)
     
-    # Clean column names
-    data.columns = data.columns.str.strip().str.split(';', expand=True)
-    data.columns = ['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 'Smoking status', 'SBP', 'Tch']
+    # Set the column names
+    data.columns = ['combined']
     
-    # Split the single column into multiple columns
-    data = data.iloc[:, 0].str.split(';', expand=True)
-    data.columns = ['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 'Smoking status', 'SBP', 'Tch']
+    # Split the combined column into separate columns
+    data[['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 'Smoking status', 'SBP', 'Tch']] = data['combined'].str.split(';', expand=True)
+    
+    # Drop the original combined column
+    data = data.drop('combined', axis=1)
     
     # Remove any rows that are completely empty
     data = data.dropna(how='all')
@@ -176,16 +178,35 @@ def main():
             st.write(f"Support Vector Machine: {svm_pred:.2%} risiko High WHR")
     
     else:
+
+# Header utama
         st.header("Tentang Kami")
-        st.write("Aplikasi ini memprediksi risiko penyakit jantung berdasarkan berbagai faktor.")
-        st.write("Dibuat oleh: Kelompok Sembarang Wes")
-        st.write("Mohamad Rafi Hendryansah (23523064)")
-        st.write("Afifuddin Mahfud (23523076)")
-        st.write("Yusuf Aditya Kresnayana(23523077)")
-        st.write("Naufal Rizqy Wardono (23523097)")
-        st.write("Mustaqim Adiyatno(23523107)")
-        st.write("M. Trendo Rafly Dipu(23523116)")
+        st.markdown(
+            """
+            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung berdasarkan berbagai faktor kesehatan.
+            Kami berharap aplikasi ini dapat membantu pengguna untuk meningkatkan kesadaran dan mengambil langkah preventif yang diperlukan.
+            """
+        )
+
+        # Subheader untuk tim
+        st.subheader("Dibuat oleh Kelompok Sembarang Wes:")
+        st.markdown(
+            """
+            - **Mohamad Rafi Hendryansah** (23523064)  
+            - **Afifuddin Mahfud** (23523076)  
+            - **Yusuf Aditya Kresnayana** (23523077)  
+            - **Naufal Rizqy Wardono** (23523097)  
+            - **Mustaqim Adiyatno** (23523107)  
+            - **M. Trendo Rafly Dipu** (23523116)
+            """
+        )
+
+        # Tambahkan sedikit elemen visual seperti divider
+        st.markdown("---")
+
+        # Ajakan untuk menggunakan aplikasi
+        st.info("Jelajahi aplikasi ini untuk mempelajari lebih lanjut tentang kesehatan jantung Anda!")
+
         
 if __name__ == "__main__":
     main()
-
