@@ -187,7 +187,6 @@ def main():
             - **Naufal Rizqy Wardono** (23523097)  
             - **Mustaqim Adiyatno** (23523107)  
             - **M. Trendo Rafly Dipu** (23523116)
-            cuma mau ngasih tau kalo ada yang mau ngasih tau kalo ada yang mau ng
             """
         )
 
