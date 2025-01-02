@@ -189,11 +189,8 @@ def main():
             - **M. Trendo Rafly Dipu** (23523116)
             """
         )
-
-        # Tambahkan sedikit elemen visual seperti divider
         st.markdown("---")
 
-        # Ajakan untuk menggunakan aplikasi
         st.info("Jelajahi aplikasi ini untuk mempelajari lebih lanjut tentang kesehatan jantung Anda!")
 
         
