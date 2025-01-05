@@ -121,7 +121,7 @@ def calculate_risk_score(age, sex, family_history, diabetes, smoking, sbp, tch):
     
     # Adjust for sex
     if sex == "Female":
-        risk_score *= 0.7  # Further reduce risk score for females
+        risk_score *= 0.6  # Further reduce risk score for females
     
     return risk_score
 
@@ -207,10 +207,10 @@ def main():
                 
                 # Adjust final probability based on risk score and sex
                 if sex == "Female":
-                    base_prob = pred_proba[1] * 0.75  # Further reduce base probability for females
-                    final_prob = (base_prob * 0.7 + (risk_score / 20) * 0.3)  # Weighted average
+                    base_prob = pred_proba[1] * 0.6  # Further reduce base probability for females
+                    final_prob = (base_prob * 0.5 + (risk_score / 20) * 0.5)  # Equal weight to model and risk score
                 else:
-                    final_prob = (pred_proba[1] * 0.8 + (risk_score / 15) * 0.2)  # Weighted average
+                    final_prob = (pred_proba[1] * 0.7 + (risk_score / 15) * 0.3)  # More weight to model prediction for males
 
                 final_prob = max(0, min(1, final_prob))  # Ensure probability is between 0 and 1
 
@@ -299,4 +299,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
