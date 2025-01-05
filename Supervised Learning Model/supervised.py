@@ -24,6 +24,9 @@ def load_data():
     # Drop the original combined column
     data = data.drop('combined', axis=1)
     
+    # Drop the first row (index 0) which contains duplicate header
+    data = data.iloc[1:]
+    
     # Drop duplicate rows and reset index
     data = data.drop_duplicates().reset_index(drop=True)
     
@@ -151,18 +154,14 @@ def main():
                 # Get the original label for the prediction
                 original_label = label_encoders['High WHR'].inverse_transform([pred_class])[0]
 
-                # Display results
+                # Display risk level with color                
                 st.subheader("Hasil Prediksi")
-                st.write(f"Prediksi: {original_label}")
-                st.write(f"Probabilitas Risiko Rendah: {pred_proba[0]:.2f}")
-                st.write(f"Probabilitas Risiko Tinggi: {pred_proba[1]:.2f}")
-                
-                # Display risk level with color
                 risk_color = "red" if pred_proba[1] > 0.5 else "green"
                 risk_level = "Tinggi" if pred_proba[1] > 0.5 else "Rendah"
-                st.markdown(f"<h3 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h3>", 
+                st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
                           unsafe_allow_html=True)
-
+                st.write(f"Probabilitas Risiko Rendah: {pred_proba[0]:.2f}")
+                st.write(f"Probabilitas Risiko Tinggi: {pred_proba[1]:.2f}")
             except ValueError as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
                 st.error("Pastikan semua input valid dan sesuai format")
