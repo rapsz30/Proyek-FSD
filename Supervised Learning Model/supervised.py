@@ -57,10 +57,10 @@ def load_data():
 
     return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
 
-# Train Naive Bayes model
+# Modifikasi fungsi train_naive_bayes
 @st.cache_resource
 def train_naive_bayes(X_train_scaled, y_train):
-    nb_model = GaussianNB()
+    nb_model = GaussianNB(priors=[0.6, 0.4])  # Adjust priors for better balance
     nb_model.fit(X_train_scaled, y_train)
     return nb_model
 
@@ -113,10 +113,12 @@ def main():
         st.write(f"Mean Squared Error (MSE): {mse:.4f}")
         st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
 
+# Modifikasi bagian prediksi
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
 
         # Create input fields for each feature
+<<<<<<< HEAD
         age = st.selectbox("Age", data['Age'].unique())
         sex = st.selectbox("Sex", data['Sex'].unique())
         family_history = st.selectbox("Family history of CVD", data['Family history of CVD'].unique())
@@ -124,6 +126,15 @@ def main():
         smoking = st.selectbox("Smoking status", data['Smoking status'].unique())
         sbp = st.selectbox("SBP", data['SBP'].unique())
         tch = st.selectbox("Tch", data['Tch'].unique())
+=======
+        age = st.selectbox("Age", sorted(data['Age'].unique()))
+        sex = st.selectbox("Sex", sorted(data['Sex'].unique()))
+        family_history = st.selectbox("Family history of CVD", sorted(data['Family history of CVD'].unique()))
+        diabetes = st.selectbox("Diabetes Mellitus", sorted(data['Diabetes Mellitus'].unique()))
+        smoking = st.selectbox("Smoking status", sorted(data['Smoking status'].unique()))
+        sbp = st.selectbox("SBP", sorted(data['SBP'].unique()))
+        tch = st.selectbox("Tch", sorted(data['Tch'].unique()))
+>>>>>>> 52ab4bb42d45d10b00059bf195b87cc570cd7b6f
 
         if st.button("Prediksi"):
             try:
@@ -138,7 +149,11 @@ def main():
                     'Tch': [tch]
                 })
 
+<<<<<<< HEAD
                 # Encode the input data using the same label encoders
+=======
+                # Encode the input data
+>>>>>>> 52ab4bb42d45d10b00059bf195b87cc570cd7b6f
                 input_encoded = pd.DataFrame()
                 for col in input_data.columns:
                     le = label_encoders[col]
@@ -149,6 +164,7 @@ def main():
 
                 # Make prediction
                 pred_proba = nb_model.predict_proba(input_scaled)[0]
+<<<<<<< HEAD
                 pred_class = nb_model.predict(input_scaled)[0]
                 
                 # Get the original label for the prediction
@@ -165,7 +181,58 @@ def main():
             except ValueError as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
                 st.error("Pastikan semua input valid dan sesuai format")
+=======
+                
+                # Adjust probabilities based on gender and other risk factors
+                risk_score = 0
+                
+                # Calculate risk score based on multiple factors
+                if int(age) > 50:
+                    risk_score += 0.1
+                if int(sbp) > 130:
+                    risk_score += 0.1
+                if family_history == "Yes":
+                    risk_score += 0.1
+                if diabetes == "Yes":
+                    risk_score += 0.1
+                if smoking == "Current":
+                    risk_score += 0.1
+                    
+                # Adjust probabilities based on gender
+                if sex == "Female":
+                    # Reduce the base risk for females
+                    final_prob = max(0, min(1, pred_proba[1] * 0.7 + risk_score))
+                else:
+                    final_prob = max(0, min(1, pred_proba[1] + risk_score))
+                
+                # Display results
+                st.subheader("Hasil Prediksi")
+                risk_color = "red" if final_prob > 0.5 else "green"
+                risk_level = "Tinggi" if final_prob > 0.5 else "Rendah"
+                
+                st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
+                        unsafe_allow_html=True)
+                
+                st.write(f"Probabilitas Risiko: {final_prob:.2f}")
 
+                # Display risk factors if risk is high
+                if final_prob > 0.5:
+                    st.subheader("Faktor Risiko Teridentifikasi:")
+                    if int(age) > 50:
+                        st.write("- Usia di atas 50 tahun")
+                    if int(sbp) > 130:
+                        st.write("- Tekanan darah sistolik tinggi")
+                    if family_history == "Yes":
+                        st.write("- Riwayat keluarga dengan CVD")
+                    if diabetes == "Yes":
+                        st.write("- Diabetes Mellitus")
+                    if smoking == "Current":
+                        st.write("- Perokok aktif")
+>>>>>>> 52ab4bb42d45d10b00059bf195b87cc570cd7b6f
+
+            except ValueError as e:
+                st.error(f"Error dalam pemrosesan input: {str(e)}")
+                st.error("Pastikan semua input valid dan sesuai format")
     else:
         # Header utama
         st.header("Tentang Kami")
