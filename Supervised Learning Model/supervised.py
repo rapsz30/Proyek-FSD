@@ -57,10 +57,10 @@ def load_data():
 
     return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
 
-# Train Naive Bayes model
+# Modifikasi fungsi train_naive_bayes
 @st.cache_resource
 def train_naive_bayes(X_train_scaled, y_train):
-    nb_model = GaussianNB()
+    nb_model = GaussianNB(priors=[0.6, 0.4])  # Adjust priors for better balance
     nb_model.fit(X_train_scaled, y_train)
     return nb_model
 
@@ -113,109 +113,93 @@ def main():
         st.write(f"Mean Squared Error (MSE): {mse:.4f}")
         st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
 
+# Modifikasi bagian prediksi
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
 
-        # Improved input collection with better validation
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            age = st.number_input("Age", min_value=20, max_value=100, value=40)
-            sex = st.selectbox("Sex", ["Male", "Female"])
-            family_history = st.selectbox("Family history of CVD", ["Yes", "No"])
-            diabetes = st.selectbox("Diabetes Mellitus", ["Yes", "No"])
-        
-        with col2:
-            smoking = st.selectbox("Smoking status", ["Current", "Former", "Never"])
-            sbp = st.number_input("Systolic Blood Pressure (SBP)", min_value=90, max_value=200, value=120)
-            tch = st.number_input("Total Cholesterol (Tch)", min_value=100, max_value=300, value=200)
+        # Create input fields for each feature
+        age = st.selectbox("Age", sorted(data['Age'].unique()))
+        sex = st.selectbox("Sex", sorted(data['Sex'].unique()))
+        family_history = st.selectbox("Family history of CVD", sorted(data['Family history of CVD'].unique()))
+        diabetes = st.selectbox("Diabetes Mellitus", sorted(data['Diabetes Mellitus'].unique()))
+        smoking = st.selectbox("Smoking status", sorted(data['Smoking status'].unique()))
+        sbp = st.selectbox("SBP", sorted(data['SBP'].unique()))
+        tch = st.selectbox("Tch", sorted(data['Tch'].unique()))
 
         if st.button("Prediksi"):
             try:
-                # Create input DataFrame with standardized values
+                # Create input DataFrame
                 input_data = pd.DataFrame({
-                    'Age': [str(age)],  # Convert to string to match training data format
+                    'Age': [age],
                     'Sex': [sex],
                     'Family history of CVD': [family_history],
                     'Diabetes Mellitus': [diabetes],
                     'Smoking status': [smoking],
-                    'SBP': [str(sbp)],  # Convert to string to match training data format
-                    'Tch': [str(tch)]    # Convert to string to match training data format
+                    'SBP': [sbp],
+                    'Tch': [tch]
                 })
 
-                # Encode the input data using stored label encoders
+                # Encode the input data
                 input_encoded = pd.DataFrame()
                 for col in input_data.columns:
                     le = label_encoders[col]
-                    try:
-                        input_encoded[col] = le.transform(input_data[col].astype(str))
-                    except ValueError:
-                        st.error(f"Invalid value for {col}. Please check your input.")
-                        return
+                    input_encoded[col] = le.transform(input_data[col].astype(str))
 
-                # Scale the encoded input using the stored scaler
+                # Scale the encoded input
                 input_scaled = scaler.transform(input_encoded)
 
                 # Make prediction
                 pred_proba = nb_model.predict_proba(input_scaled)[0]
-                pred_class = nb_model.predict(input_scaled)[0]
-
-                # Calculate confidence score
-                confidence = max(pred_proba) * 100
-
-                # Display results with improved visualization
-                st.subheader("Hasil Prediksi")
                 
-                # Create columns for better layout
-                res_col1, res_col2 = st.columns(2)
+                # Adjust probabilities based on gender and other risk factors
+                risk_score = 0
                 
-                with res_col1:
-                    # Display risk level with color and progress bar
-                    risk_color = "red" if pred_proba[1] > 0.5 else "green"
-                    risk_level = "Tinggi" if pred_proba[1] > 0.5 else "Rendah"
-                    st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
-                              unsafe_allow_html=True)
-                    
-                    # Add confidence meter
-                    st.progress(confidence/100)
-                    st.write(f"Tingkat Kepercayaan: {confidence:.1f}%")
-
-                with res_col2:
-                    # Create a pie chart for probability distribution
-                    fig, ax = plt.subplots()
-                    ax.pie([pred_proba[0], pred_proba[1]], 
-                          labels=['Risiko Rendah', 'Risiko Tinggi'],
-                          colors=['green', 'red'],
-                          autopct='%1.1f%%')
-                    st.pyplot(fig)
-
-                # Add detailed risk factors analysis
-                st.subheader("Analisis Faktor Risiko")
-                risk_factors = []
-                if age > 50:
-                    risk_factors.append("Usia di atas 50 tahun")
-                if sbp > 130:
-                    risk_factors.append("Tekanan darah sistolik tinggi")
-                if tch > 200:
-                    risk_factors.append("Kolesterol total tinggi")
+                # Calculate risk score based on multiple factors
+                if int(age) > 50:
+                    risk_score += 0.1
+                if int(sbp) > 130:
+                    risk_score += 0.1
                 if family_history == "Yes":
-                    risk_factors.append("Riwayat keluarga dengan CVD")
+                    risk_score += 0.1
                 if diabetes == "Yes":
-                    risk_factors.append("Diabetes Mellitus")
+                    risk_score += 0.1
                 if smoking == "Current":
-                    risk_factors.append("Perokok aktif")
-
-                if risk_factors:
-                    st.write("Faktor risiko yang teridentifikasi:")
-                    for factor in risk_factors:
-                        st.write(f"• {factor}")
+                    risk_score += 0.1
+                    
+                # Adjust probabilities based on gender
+                if sex == "Female":
+                    # Reduce the base risk for females
+                    final_prob = max(0, min(1, pred_proba[1] * 0.7 + risk_score))
                 else:
-                    st.write("Tidak ada faktor risiko signifikan yang teridentifikasi.")
+                    final_prob = max(0, min(1, pred_proba[1] + risk_score))
+                
+                # Display results
+                st.subheader("Hasil Prediksi")
+                risk_color = "red" if final_prob > 0.5 else "green"
+                risk_level = "Tinggi" if final_prob > 0.5 else "Rendah"
+                
+                st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
+                        unsafe_allow_html=True)
+                
+                st.write(f"Probabilitas Risiko: {final_prob:.2f}")
 
-            except Exception as e:
-                st.error(f"Terjadi kesalahan: {str(e)}")
-                st.error("Silakan periksa kembali input Anda")
+                # Display risk factors if risk is high
+                if final_prob > 0.5:
+                    st.subheader("Faktor Risiko Teridentifikasi:")
+                    if int(age) > 50:
+                        st.write("- Usia di atas 50 tahun")
+                    if int(sbp) > 130:
+                        st.write("- Tekanan darah sistolik tinggi")
+                    if family_history == "Yes":
+                        st.write("- Riwayat keluarga dengan CVD")
+                    if diabetes == "Yes":
+                        st.write("- Diabetes Mellitus")
+                    if smoking == "Current":
+                        st.write("- Perokok aktif")
 
+            except ValueError as e:
+                st.error(f"Error dalam pemrosesan input: {str(e)}")
+                st.error("Pastikan semua input valid dan sesuai format")
     else:
         # Header utama
         st.header("Tentang Kami")
