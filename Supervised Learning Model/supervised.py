@@ -116,105 +116,55 @@ def main():
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
 
-        # Improved input collection with better validation
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            age = st.number_input("Age", min_value=20, max_value=100, value=40)
-            sex = st.selectbox("Sex", ["Male", "Female"])
-            family_history = st.selectbox("Family history of CVD", ["Yes", "No"])
-            diabetes = st.selectbox("Diabetes Mellitus", ["Yes", "No"])
-        
-        with col2:
-            smoking = st.selectbox("Smoking status", ["Current", "Former", "Never"])
-            sbp = st.number_input("Systolic Blood Pressure (SBP)", min_value=90, max_value=200, value=120)
-            tch = st.number_input("Total Cholesterol (Tch)", min_value=100, max_value=300, value=200)
+        # Create input fields for each feature
+        age = st.selectbox("Age", data['Age'].unique())
+        sex = st.selectbox("Sex", data['Sex'].unique())
+        family_history = st.selectbox("Family history of CVD", data['Family history of CVD'].unique())
+        diabetes = st.selectbox("Diabetes Mellitus", data['Diabetes Mellitus'].unique())
+        smoking = st.selectbox("Smoking status", data['Smoking status'].unique())
+        sbp = st.selectbox("SBP", data['SBP'].unique())
+        tch = st.selectbox("Tch", data['Tch'].unique())
 
         if st.button("Prediksi"):
             try:
-                # Create input DataFrame with standardized values
+                # Create input DataFrame
                 input_data = pd.DataFrame({
-                    'Age': [str(age)],  # Convert to string to match training data format
+                    'Age': [age],
                     'Sex': [sex],
                     'Family history of CVD': [family_history],
                     'Diabetes Mellitus': [diabetes],
                     'Smoking status': [smoking],
-                    'SBP': [str(sbp)],  # Convert to string to match training data format
-                    'Tch': [str(tch)]    # Convert to string to match training data format
+                    'SBP': [sbp],
+                    'Tch': [tch]
                 })
 
-                # Encode the input data using stored label encoders
+                # Encode the input data using the same label encoders
                 input_encoded = pd.DataFrame()
                 for col in input_data.columns:
                     le = label_encoders[col]
-                    try:
-                        input_encoded[col] = le.transform(input_data[col].astype(str))
-                    except ValueError:
-                        st.error(f"Invalid value for {col}. Please check your input.")
-                        return
+                    input_encoded[col] = le.transform(input_data[col].astype(str))
 
-                # Scale the encoded input using the stored scaler
+                # Scale the encoded input
                 input_scaled = scaler.transform(input_encoded)
 
                 # Make prediction
                 pred_proba = nb_model.predict_proba(input_scaled)[0]
                 pred_class = nb_model.predict(input_scaled)[0]
+                
+                # Get the original label for the prediction
+                original_label = label_encoders['High WHR'].inverse_transform([pred_class])[0]
 
-                # Calculate confidence score
-                confidence = max(pred_proba) * 100
-
-                # Display results with improved visualization
+                # Display risk level with color                
                 st.subheader("Hasil Prediksi")
-                
-                # Create columns for better layout
-                res_col1, res_col2 = st.columns(2)
-                
-                with res_col1:
-                    # Display risk level with color and progress bar
-                    risk_color = "red" if pred_proba[1] > 0.5 else "green"
-                    risk_level = "Tinggi" if pred_proba[1] > 0.5 else "Rendah"
-                    st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
-                              unsafe_allow_html=True)
-                    
-                    # Add confidence meter
-                    st.progress(confidence/100)
-                    st.write(f"Tingkat Kepercayaan: {confidence:.1f}%")
-
-                with res_col2:
-                    # Create a pie chart for probability distribution
-                    fig, ax = plt.subplots()
-                    ax.pie([pred_proba[0], pred_proba[1]], 
-                          labels=['Risiko Rendah', 'Risiko Tinggi'],
-                          colors=['green', 'red'],
-                          autopct='%1.1f%%')
-                    st.pyplot(fig)
-
-                # Add detailed risk factors analysis
-                st.subheader("Analisis Faktor Risiko")
-                risk_factors = []
-                if age > 50:
-                    risk_factors.append("Usia di atas 50 tahun")
-                if sbp > 130:
-                    risk_factors.append("Tekanan darah sistolik tinggi")
-                if tch > 200:
-                    risk_factors.append("Kolesterol total tinggi")
-                if family_history == "Yes":
-                    risk_factors.append("Riwayat keluarga dengan CVD")
-                if diabetes == "Yes":
-                    risk_factors.append("Diabetes Mellitus")
-                if smoking == "Current":
-                    risk_factors.append("Perokok aktif")
-
-                if risk_factors:
-                    st.write("Faktor risiko yang teridentifikasi:")
-                    for factor in risk_factors:
-                        st.write(f"• {factor}")
-                else:
-                    st.write("Tidak ada faktor risiko signifikan yang teridentifikasi.")
-
-            except Exception as e:
-                st.error(f"Terjadi kesalahan: {str(e)}")
-                st.error("Silakan periksa kembali input Anda")
+                risk_color = "red" if pred_proba[1] > 0.5 else "green"
+                risk_level = "Tinggi" if pred_proba[1] > 0.5 else "Rendah"
+                st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
+                          unsafe_allow_html=True)
+                st.write(f"Probabilitas Risiko Rendah: {pred_proba[0]:.2f}")
+                st.write(f"Probabilitas Risiko Tinggi: {pred_proba[1]:.2f}")
+            except ValueError as e:
+                st.error(f"Error dalam pemrosesan input: {str(e)}")
+                st.error("Pastikan semua input valid dan sesuai format")
 
     else:
         # Header utama
