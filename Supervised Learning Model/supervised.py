@@ -5,9 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
-from sklearn.svm import SVC
 from sklearn.metrics import confusion_matrix, classification_report, mean_squared_error
 
 # Load and preprocess the data
@@ -15,27 +13,32 @@ from sklearn.metrics import confusion_matrix, classification_report, mean_square
 def load_data():
     # Read the CSV file
     data = pd.read_csv("riskchartsampledata.csv", header=None)
-
-    # Drop duplicate rows (including header duplication)
-    data = data.drop_duplicates()
-
-    # Set the column names
+    
+    # Set the initial column name
     data.columns = ['combined']
-
+    
     # Split the combined column into separate columns
-    data[['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 'Smoking status', 'SBP', 'Tch']] = data['combined'].str.split(';', expand=True)
-
+    data[['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 
+          'Smoking status', 'SBP', 'Tch']] = data['combined'].str.split(';', expand=True)
+    
     # Drop the original combined column
     data = data.drop('combined', axis=1)
-
+    
+    # Drop duplicate rows and reset index
+    data = data.drop_duplicates().reset_index(drop=True)
+    
     # Remove any rows that are completely empty
     data = data.dropna(how='all')
 
     # Encode categorical variables for model training
     data_encoded = data.copy()
-    le = LabelEncoder()
+    label_encoders = {}
+    
+    # Create and store label encoders for each column
     for col in data_encoded.columns:
+        le = LabelEncoder()
         data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
+        label_encoders[col] = le
 
     # Split features and target
     X = data_encoded.drop('High WHR', axis=1)
@@ -49,23 +52,16 @@ def load_data():
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler
+    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
 
-# Train models
+# Train Naive Bayes model
 @st.cache_resource
-def train_models(X_train_scaled, y_train):
-    lr_model = LogisticRegression(random_state=42)
-    lr_model.fit(X_train_scaled, y_train)
-
+def train_naive_bayes(X_train_scaled, y_train):
     nb_model = GaussianNB()
     nb_model.fit(X_train_scaled, y_train)
+    return nb_model
 
-    svm_model = SVC(probability=True, random_state=42)
-    svm_model.fit(X_train_scaled, y_train)
-
-    return lr_model, nb_model, svm_model
-
-# Evaluate models
+# Evaluate model
 def evaluate_model(model, X_test_scaled, y_test):
     y_pred = model.predict(X_test_scaled)
     cm = confusion_matrix(y_test, y_pred)
@@ -76,11 +72,11 @@ def evaluate_model(model, X_test_scaled, y_test):
 
 # Main Streamlit app
 def main():
-    st.title("Prediksi Risiko Penyakit Jantung")
+    st.title("Prediksi Risiko Penyakit Jantung menggunakan Naive Bayes")
 
-    # Load data and train models
-    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler = load_data()
-    lr_model, nb_model, svm_model = train_models(X_train_scaled, y_train)
+    # Load data and train model
+    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders = load_data()
+    nb_model = train_naive_bayes(X_train_scaled, y_train)
 
     # Sidebar
     st.sidebar.title("Navigasi")
@@ -97,29 +93,20 @@ def main():
         st.pyplot(fig)
 
     elif page == "Evaluasi":
-        st.header("Evaluasi Model")
+        st.header("Evaluasi Model Naive Bayes")
 
-        model_option = st.selectbox("Pilih Model", ["Regresi Logistik", "Naive Bayes", "SVM"])
-
-        if model_option == "Regresi Logistik":
-            model = lr_model
-        elif model_option == "Naive Bayes":
-            model = nb_model
-        else:
-            model = svm_model
-
-        cm, cr, mse, rmse = evaluate_model(model, X_test_scaled, y_test)
+        cm, cr, mse, rmse = evaluate_model(nb_model, X_test_scaled, y_test)
 
         st.subheader("Matriks Konfusi")
         fig, ax = plt.subplots(figsize=(8, 6))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        plt.title(f"Matriks Konfusi - {model_option}")
+        plt.title("Matriks Konfusi - Naive Bayes")
         st.pyplot(fig)
 
         st.subheader("Laporan Klasifikasi")
         st.write(pd.DataFrame(cr).transpose())
 
-        st.subheader("Metrik Regresi")
+        st.subheader("Metrik Evaluasi")
         st.write(f"Mean Squared Error (MSE): {mse:.4f}")
         st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
 
@@ -136,44 +123,59 @@ def main():
         tch = st.selectbox("Tch", data['Tch'].unique())
 
         if st.button("Prediksi"):
-            # Create a DataFrame with the input data
-            input_data = pd.DataFrame({
-                'Age': [age],
-                'Sex': [sex],
-                'Family history of CVD': [family_history],
-                'Diabetes Mellitus': [diabetes],
-                'Smoking status': [smoking],
-                'SBP': [sbp],
-                'Tch': [tch]
-            })
+            try:
+                # Create input DataFrame
+                input_data = pd.DataFrame({
+                    'Age': [age],
+                    'Sex': [sex],
+                    'Family history of CVD': [family_history],
+                    'Diabetes Mellitus': [diabetes],
+                    'Smoking status': [smoking],
+                    'SBP': [sbp],
+                    'Tch': [tch]
+                })
 
-            # Encode and scale the input data
-            input_encoded = pd.get_dummies(input_data)
-            for col in X_train.columns:
-                if col not in input_encoded.columns:
-                    input_encoded[col] = 0
-            input_encoded = input_encoded[X_train.columns]
-            input_scaled = scaler.transform(input_encoded)
+                # Encode the input data using the same label encoders
+                input_encoded = pd.DataFrame()
+                for col in input_data.columns:
+                    le = label_encoders[col]
+                    input_encoded[col] = le.transform(input_data[col].astype(str))
 
-            # Select a model and make predictions
-            pred_model = st.selectbox("Pilih Model Prediksi", ["Regresi Logistik", "Naive Bayes", "SVM"])
-            if pred_model == "Regresi Logistik":
-                pred = lr_model.predict_proba(input_scaled)[0][1]
-            elif pred_model == "Naive Bayes":
-                pred = nb_model.predict_proba(input_scaled)[0][1]
-            else:
-                pred = svm_model.predict_proba(input_scaled)[0][1]
+                # Scale the encoded input
+                input_scaled = scaler.transform(input_encoded)
 
-            st.subheader("Hasil Prediksi")
-            st.write(f"Risiko {'Tinggi' if pred > 0.5 else 'Rendah'} penyakit jantung.")
-            st.write(f"Probabilitas: {pred:.2f}")
+                # Make prediction
+                pred_proba = nb_model.predict_proba(input_scaled)[0]
+                pred_class = nb_model.predict(input_scaled)[0]
+                
+                # Get the original label for the prediction
+                original_label = label_encoders['High WHR'].inverse_transform([pred_class])[0]
+
+                # Display results
+                st.subheader("Hasil Prediksi")
+                st.write(f"Prediksi: {original_label}")
+                st.write(f"Probabilitas Risiko Rendah: {pred_proba[0]:.2f}")
+                st.write(f"Probabilitas Risiko Tinggi: {pred_proba[1]:.2f}")
+                
+                # Display risk level with color
+                risk_color = "red" if pred_proba[1] > 0.5 else "green"
+                risk_level = "Tinggi" if pred_proba[1] > 0.5 else "Rendah"
+                st.markdown(f"<h3 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h3>", 
+                          unsafe_allow_html=True)
+
+            except ValueError as e:
+                st.error(f"Error dalam pemrosesan input: {str(e)}")
+                st.error("Pastikan semua input valid dan sesuai format")
+
     else:
-
-# Header utama
+        # Header utama
         st.header("Tentang Kami")
         st.markdown(
             """
-            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung berdasarkan berbagai faktor, seperti usia, jenis kelamin, riwayat keluarga dengan penyakit kardiovaskular (CVD), diabetes mellitus, rasio lingkar pinggang terhadap pinggul (WHR) yang tinggi, status merokok, tekanan darah sistolik (SBP), dan kadar kolesterol total (Tch). Kami berharap aplikasi ini dapat membantu pengguna untuk memahami risiko mereka dan mengambil langkah preventif yang tepat untuk menjaga kesehatan jantung
+            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung menggunakan algoritma Naive Bayes. 
+            Model ini mempertimbangkan berbagai faktor seperti usia, jenis kelamin, riwayat keluarga dengan 
+            penyakit kardiovaskular (CVD), diabetes mellitus, rasio lingkar pinggang terhadap pinggul (WHR) 
+            yang tinggi, status merokok, tekanan darah sistolik (SBP), dan kadar kolesterol total (Tch).
             """
         )
 
@@ -193,6 +195,5 @@ def main():
 
         st.info("Jelajahi aplikasi ini untuk mempelajari lebih lanjut tentang kesehatan jantung Anda!")
 
-        
 if __name__ == "__main__":
     main()
