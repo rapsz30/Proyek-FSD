@@ -73,12 +73,19 @@ def evaluate_model(model, X_test_scaled, y_test):
     rmse = np.sqrt(mse)
     return cm, cr, mse, rmse
 
+# Helper function to safely convert string to int
+def safe_int_convert(value, default=0):
+    try:
+        return int(value.split('-')[0])
+    except (ValueError, AttributeError, IndexError):
+        return default
+
 # Calculate risk score
 def calculate_risk_score(age, sex, family_history, diabetes, smoking, sbp, tch):
     risk_score = 0
     
     # Age risk
-    age_start = int(age.split('-')[0])
+    age_start = safe_int_convert(age)
     if age_start >= 55:
         risk_score += 2
     elif age_start >= 45:
@@ -99,14 +106,14 @@ def calculate_risk_score(age, sex, family_history, diabetes, smoking, sbp, tch):
         risk_score += 1
     
     # Blood pressure risk
-    sbp_start = int(sbp.split('-')[0])
+    sbp_start = safe_int_convert(sbp)
     if sbp_start >= 140:
         risk_score += 2
     elif sbp_start >= 130:
         risk_score += 1
     
     # Cholesterol risk
-    tch_start = int(tch.split('-')[0])
+    tch_start = safe_int_convert(tch)
     if tch_start >= 240:
         risk_score += 2
     elif tch_start >= 200:
@@ -114,7 +121,7 @@ def calculate_risk_score(age, sex, family_history, diabetes, smoking, sbp, tch):
     
     # Adjust for sex
     if sex == "Female":
-        risk_score *= 0.8  # Women generally have lower cardiovascular risk
+        risk_score *= 0.6  # Further reduce risk score for females
     
     return risk_score
 
@@ -200,28 +207,44 @@ def main():
                 
                 # Adjust final probability based on risk score and sex
                 if sex == "Female":
-                    base_prob = pred_proba[1] * 0.8  # Further reduce base probability for females
-                    final_prob = (base_prob + (risk_score / 20)) / 2  # Average of base prob and normalized risk score
+                    base_prob = pred_proba[1] * 0.6  # Further reduce base probability for females
+                    final_prob = (base_prob * 0.5 + (risk_score / 20) * 0.5)  # Equal weight to model and risk score
                 else:
-                    final_prob = (pred_proba[1] + (risk_score / 15)) / 2  # Average of base prob and normalized risk score
+                    final_prob = (pred_proba[1] * 0.7 + (risk_score / 15) * 0.3)  # More weight to model prediction for males
 
                 final_prob = max(0, min(1, final_prob))  # Ensure probability is between 0 and 1
 
                 # Display results
                 st.subheader("Hasil Prediksi")
-                risk_color = "red" if final_prob > 0.5 else "green"
-                risk_level = "Tinggi" if final_prob > 0.5 else "Rendah"
+
+                # Define risk levels
+                if final_prob < 0.2:
+                    risk_level = "Sangat Rendah"
+                    risk_color = "green"
+                elif final_prob < 0.4:
+                    risk_level = "Rendah"
+                    risk_color = "lightgreen"
+                elif final_prob < 0.6:
+                    risk_level = "Sedang"
+                    risk_color = "yellow"
+                elif final_prob < 0.8:
+                    risk_level = "Tinggi"
+                    risk_color = "orange"
+                else:
+                    risk_level = "Sangat Tinggi"
+                    risk_color = "red"
 
                 st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
-                        unsafe_allow_html=True)
+                            unsafe_allow_html=True)
 
                 st.write(f"Probabilitas Risiko: {final_prob:.2f}")
 
                 # Display risk factors
                 st.subheader("Faktor Risiko Teridentifikasi:")
-                if int(age.split('-')[0]) >= 55:
+                age_start = safe_int_convert(age)
+                if age_start >= 55:
                     st.write("- Usia di atas 55 tahun")
-                elif int(age.split('-')[0]) >= 45:
+                elif age_start >= 45:
                     st.write("- Usia di atas 45 tahun")
                 if family_history == "Yes":
                     st.write("- Riwayat keluarga dengan CVD")
@@ -231,16 +254,18 @@ def main():
                     st.write("- Perokok aktif")
                 elif smoking == "Former":
                     st.write("- Mantan perokok")
-                if int(sbp.split('-')[0]) >= 140:
+                sbp_start = safe_int_convert(sbp)
+                if sbp_start >= 140:
                     st.write("- Tekanan darah sistolik tinggi (≥140 mmHg)")
-                elif int(sbp.split('-')[0]) >= 130:
+                elif sbp_start >= 130:
                     st.write("- Tekanan darah sistolik agak tinggi (130-139 mmHg)")
-                if int(tch.split('-')[0]) >= 240:
+                tch_start = safe_int_convert(tch)
+                if tch_start >= 240:
                     st.write("- Kolesterol total tinggi (≥240 mg/dL)")
-                elif int(tch.split('-')[0]) >= 200:
+                elif tch_start >= 200:
                     st.write("- Kolesterol total agak tinggi (200-239 mg/dL)")
 
-            except ValueError as e:
+            except Exception as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
                 st.error("Pastikan semua input valid dan sesuai format")
 
@@ -274,4 +299,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
