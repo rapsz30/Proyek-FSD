@@ -184,6 +184,7 @@ def main():
     elif halaman == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
 
+<<<<<<< HEAD
         # Membuat input fields untuk setiap fitur
         usia = st.selectbox("Usia", data['Usia'].unique())
         jenis_kelamin = st.selectbox("Jenis Kelamin", data['Jenis Kelamin'].unique())
@@ -192,6 +193,26 @@ def main():
         merokok = st.selectbox("Status Merokok", data['Status Merokok'].unique())
         tds = st.selectbox("TDS", data['TDS'].unique())
         kolesterol = st.selectbox("Kolesterol Total", data['Kolesterol Total'].unique())
+=======
+        # Create input fields for each feature
+<<<<<<< HEAD
+        age = st.selectbox("Age", data['Age'].unique())
+        sex = st.selectbox("Sex", data['Sex'].unique())
+        family_history = st.selectbox("Family history of CVD", data['Family history of CVD'].unique())
+        diabetes = st.selectbox("Diabetes Mellitus", data['Diabetes Mellitus'].unique())
+        smoking = st.selectbox("Smoking status", data['Smoking status'].unique())
+        sbp = st.selectbox("SBP", data['SBP'].unique())
+        tch = st.selectbox("Tch", data['Tch'].unique())
+=======
+        age = st.selectbox("Age", sorted(data['Age'].unique()))
+        sex = st.selectbox("Sex", sorted(data['Sex'].unique()))
+        family_history = st.selectbox("Family history of CVD", sorted(data['Family history of CVD'].unique()))
+        diabetes = st.selectbox("Diabetes Mellitus", sorted(data['Diabetes Mellitus'].unique()))
+        smoking = st.selectbox("Smoking status", sorted(data['Smoking status'].unique()))
+        sbp = st.selectbox("SBP", sorted(data['SBP'].unique()))
+        tch = st.selectbox("Tch", sorted(data['Tch'].unique()))
+>>>>>>> 52ab4bb42d45d10b00059bf195b87cc570cd7b6f
+>>>>>>> 84297b32c5397b0c4f9beb78fced6af725cfbcb6
 
         if st.button("Prediksi"):
             try:
@@ -206,7 +227,15 @@ def main():
                     'Kolesterol Total': [kolesterol]
                 })
 
+<<<<<<< HEAD
                 # Mengkodekan data input menggunakan label encoder yang sama
+=======
+<<<<<<< HEAD
+                # Encode the input data using the same label encoders
+=======
+                # Encode the input data
+>>>>>>> 52ab4bb42d45d10b00059bf195b87cc570cd7b6f
+>>>>>>> 84297b32c5397b0c4f9beb78fced6af725cfbcb6
                 input_encoded = pd.DataFrame()
                 for col in input_data.columns:
                     le = label_encoders[col]
@@ -217,6 +246,24 @@ def main():
 
                 # Membuat prediksi
                 pred_proba = nb_model.predict_proba(input_scaled)[0]
+<<<<<<< HEAD
+                pred_class = nb_model.predict(input_scaled)[0]
+                
+                # Get the original label for the prediction
+                original_label = label_encoders['High WHR'].inverse_transform([pred_class])[0]
+
+                # Display risk level with color                
+                st.subheader("Hasil Prediksi")
+                risk_color = "red" if pred_proba[1] > 0.5 else "green"
+                risk_level = "Tinggi" if pred_proba[1] > 0.5 else "Rendah"
+                st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
+                          unsafe_allow_html=True)
+                st.write(f"Probabilitas Risiko Rendah: {pred_proba[0]:.2f}")
+                st.write(f"Probabilitas Risiko Tinggi: {pred_proba[1]:.2f}")
+            except ValueError as e:
+                st.error(f"Error dalam pemrosesan input: {str(e)}")
+                st.error("Pastikan semua input valid dan sesuai format")
+=======
                 
                 # Menyesuaikan prediksi berdasarkan jenis kelamin dan faktor risiko
                 pred_proba = sesuaikan_prediksi(pred_proba, jenis_kelamin, input_data, data[data['Jenis Kelamin'] == jenis_kelamin])
@@ -234,6 +281,7 @@ def main():
                 st.write(f"Probabilitas Risiko Rendah: {pred_proba[0]:.2f}")
                 st.write(f"Probabilitas Risiko Tinggi: {pred_proba[1]:.2f}")
 
+<<<<<<< HEAD
                 # Menampilkan interpretasi
                 st.subheader("Interpretasi Hasil")
                 interpretasi = f"""
@@ -249,6 +297,22 @@ def main():
                 Model memprediksi risiko {tingkat_risiko.lower()} dengan tingkat kepercayaan {max(pred_proba):.2%}.
                 """
                 st.write(interpretasi)
+=======
+                # Display risk factors if risk is high
+                if final_prob > 0.5:
+                    st.subheader("Faktor Risiko Teridentifikasi:")
+                    if int(age) > 50:
+                        st.write("- Usia di atas 50 tahun")
+                    if int(sbp) > 130:
+                        st.write("- Tekanan darah sistolik tinggi")
+                    if family_history == "Yes":
+                        st.write("- Riwayat keluarga dengan CVD")
+                    if diabetes == "Yes":
+                        st.write("- Diabetes Mellitus")
+                    if smoking == "Current":
+                        st.write("- Perokok aktif")
+>>>>>>> 52ab4bb42d45d10b00059bf195b87cc570cd7b6f
+>>>>>>> 84297b32c5397b0c4f9beb78fced6af725cfbcb6
 
             except ValueError as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
