@@ -83,7 +83,7 @@ def safe_int_convert(value, default=0):
 
 # Calculate risk score
 def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
-    # Initialize variables to store individual components
+    # Initialize variables
     age_score = 0
     diabetes_score = 0
     smoking_score = 0
@@ -161,15 +161,13 @@ def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
         tch_score = tch_value * 1.1237
     elif sex == "Female":
         tch_score = tch_value * 1.20904
-
-    # Sum all components
-    x = age_score + diabetes_score + smoking_score + sbp_score + tch_score
     
-    # Calculate final risk probability
+    # Calculate final risk score using the corrected formula
+    x = age_score + diabetes_score + smoking_score + sbp_score + tch_score
     y = x - 23.9802
-    z = math.exp(y)  # e^y
-    a = z * math.log(0.88936)  # Changed to correct calculation
-    risk_score = 1 - math.exp(a)  # Final probability calculation
+    
+    # Langsung menggunakan rumus yang diberikan tanpa modifikasi
+    risk_score = float(1 - (pow(0.88936, pow(math.e, y))))
     
     return risk_score
 
