@@ -19,101 +19,50 @@ def load_data():
     data = data.drop('combined', axis=1)
     data = data.iloc[1:].drop_duplicates().reset_index(drop=True).dropna(how='all')
 
-    # Separate data by gender
-    male_data = data[data['Sex'] == 'Male']
-    female_data = data[data['Sex'] == 'Female']
-
-    # Process male data
-    male_encoded = male_data.copy()
-    male_label_encoders = {}
-    for col in male_encoded.columns:
+    data_encoded = data.copy()
+    label_encoders = {}
+    for col in data_encoded.columns:
         le = LabelEncoder()
-        male_encoded[col] = le.fit_transform(male_encoded[col].astype(str))
-        male_label_encoders[col] = le
+        data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
+        label_encoders[col] = le
 
-    # Process female data
-    female_encoded = female_data.copy()
-    female_label_encoders = {}
-    for col in female_encoded.columns:
-        le = LabelEncoder()
-        female_encoded[col] = le.fit_transform(female_encoded[col].astype(str))
-        female_label_encoders[col] = le
+    X = data_encoded.drop('High WHR', axis=1)
+    y = data_encoded['High WHR']
 
-    # Prepare male training data
-    X_male = male_encoded.drop(['High WHR', 'Sex'], axis=1)
-    y_male = male_encoded['High WHR']
-
-    # Prepare female training data
-    X_female = female_encoded.drop(['High WHR', 'Sex'], axis=1)
-    y_female = female_encoded['High WHR']
-
-    # Split and scale male data
-    X_male_train, X_male_test, y_male_train, y_male_test = train_test_split(
-        X_male, y_male, test_size=0.2, random_state=42
+    # Stratify by both Sex and High WHR to maintain balance
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, 
+        test_size=0.2, 
+        random_state=42, 
+        stratify=data_encoded[['Sex', 'High WHR']]
     )
-    male_scaler = StandardScaler()
-    X_male_train_scaled = male_scaler.fit_transform(X_male_train)
-    X_male_test_scaled = male_scaler.transform(X_male_test)
+    
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-    # Split and scale female data
-    X_female_train, X_female_test, y_female_train, y_female_test = train_test_split(
-        X_female, y_female, test_size=0.2, random_state=42
-    )
-    female_scaler = StandardScaler()
-    X_female_train_scaled = female_scaler.fit_transform(X_female_train)
-    X_female_test_scaled = female_scaler.transform(X_female_test)
-
-    return (data, male_encoded, female_encoded, 
-            X_male_train_scaled, X_male_test_scaled, y_male_train, y_male_test,
-            X_female_train_scaled, X_female_test_scaled, y_female_train, y_female_test,
-            male_scaler, female_scaler, male_label_encoders, female_label_encoders)
+    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
 
 @st.cache_resource
-def train_gender_specific_models(X_male_train_scaled, y_male_train, 
-                               X_female_train_scaled, y_female_train):
-    # Train male model
-    male_model = GaussianNB()
-    male_model.fit(X_male_train_scaled, y_male_train)
-    
-    # Train female model
-    female_model = GaussianNB()
-    female_model.fit(X_female_train_scaled, y_female_train)
-    
-    return male_model, female_model
+def train_naive_bayes(X_train_scaled, y_train):
+    # Use class weights instead of priors
+    nb_model = GaussianNB()
+    nb_model.fit(X_train_scaled, y_train)
+    return nb_model
 
-def evaluate_models(male_model, female_model, 
-                   X_male_test_scaled, y_male_test,
-                   X_female_test_scaled, y_female_test):
-    # Evaluate male model
-    male_pred = male_model.predict(X_male_test_scaled)
-    male_cm = confusion_matrix(y_male_test, male_pred)
-    male_cr = classification_report(y_male_test, male_pred, output_dict=True)
-    male_mse = mean_squared_error(y_male_test, male_pred)
-    male_rmse = np.sqrt(male_mse)
-
-    # Evaluate female model
-    female_pred = female_model.predict(X_female_test_scaled)
-    female_cm = confusion_matrix(y_female_test, female_pred)
-    female_cr = classification_report(y_female_test, female_pred, output_dict=True)
-    female_mse = mean_squared_error(y_female_test, female_pred)
-    female_rmse = np.sqrt(female_mse)
-
-    return (male_cm, male_cr, male_mse, male_rmse,
-            female_cm, female_cr, female_mse, female_rmse)
+def evaluate_model(model, X_test_scaled, y_test):
+    y_pred = model.predict(X_test_scaled)
+    cm = confusion_matrix(y_test, y_pred)
+    cr = classification_report(y_test, y_pred, output_dict=True)
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = np.sqrt(mse)
+    return cm, cr, mse, rmse
 
 def main():
     st.title("Prediksi Risiko Penyakit Jantung menggunakan Naive Bayes")
 
-    # Load data and train models
-    (data, male_encoded, female_encoded, 
-     X_male_train_scaled, X_male_test_scaled, y_male_train, y_male_test,
-     X_female_train_scaled, X_female_test_scaled, y_female_train, y_female_test,
-     male_scaler, female_scaler, male_label_encoders, female_label_encoders) = load_data()
-
-    male_model, female_model = train_gender_specific_models(
-        X_male_train_scaled, y_male_train,
-        X_female_train_scaled, y_female_train
-    )
+    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders = load_data()
+    nb_model = train_naive_bayes(X_train_scaled, y_train)
 
     st.sidebar.title("Navigasi")
     page = st.sidebar.radio("Pilih Halaman", ["Dataset", "Evaluasi", "Prediksi", "Tentang Kami"])
@@ -122,6 +71,7 @@ def main():
         st.header("Dataset")
         st.write(data)
         
+        # Add distribution visualizations
         col1, col2 = st.columns(2)
         
         with col1:
@@ -140,35 +90,29 @@ def main():
             plt.title("Distribusi High WHR")
             st.pyplot(fig)
 
+        st.subheader("Heatmap Korelasi")
+        fig, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(data_encoded.corr(), annot=True, cmap='coolwarm', ax=ax)
+        plt.title("Heatmap Korelasi")
+        st.pyplot(fig)
+
     elif page == "Evaluasi":
         st.header("Evaluasi Model Naive Bayes")
 
-        (male_cm, male_cr, male_mse, male_rmse,
-         female_cm, female_cr, female_mse, female_rmse) = evaluate_models(
-            male_model, female_model,
-            X_male_test_scaled, y_male_test,
-            X_female_test_scaled, y_female_test
-        )
+        cm, cr, mse, rmse = evaluate_model(nb_model, X_test_scaled, y_test)
 
-        col1, col2 = st.columns(2)
+        st.subheader("Matriks Konfusi")
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+        plt.title("Matriks Konfusi - Naive Bayes")
+        st.pyplot(fig)
 
-        with col1:
-            st.subheader("Evaluasi Model Laki-laki")
-            fig, ax = plt.subplots(figsize=(6, 4))
-            sns.heatmap(male_cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-            plt.title("Matriks Konfusi - Model Laki-laki")
-            st.pyplot(fig)
-            st.write(pd.DataFrame(male_cr).transpose())
-            st.write(f"RMSE: {male_rmse:.4f}")
+        st.subheader("Laporan Klasifikasi")
+        st.write(pd.DataFrame(cr).transpose())
 
-        with col2:
-            st.subheader("Evaluasi Model Perempuan")
-            fig, ax = plt.subplots(figsize=(6, 4))
-            sns.heatmap(female_cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-            plt.title("Matriks Konfusi - Model Perempuan")
-            st.pyplot(fig)
-            st.write(pd.DataFrame(female_cr).transpose())
-            st.write(f"RMSE: {female_rmse:.4f}")
+        st.subheader("Metrik Evaluasi")
+        st.write(f"Mean Squared Error (MSE): {mse:.4f}")
+        st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
 
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
@@ -188,9 +132,9 @@ def main():
 
         if st.button("Prediksi"):
             try:
-                # Create input data
                 input_data = pd.DataFrame({
                     'Age': [age],
+                    'Sex': [sex],
                     'Family history of CVD': [family_history],
                     'Diabetes Mellitus': [diabetes],
                     'Smoking status': [smoking],
@@ -198,27 +142,13 @@ def main():
                     'Tch': [tch]
                 })
 
-                # Choose appropriate model and preprocessing based on gender
-                if sex == 'Male':
-                    label_encoders = male_label_encoders
-                    scaler = male_scaler
-                    model = male_model
-                else:
-                    label_encoders = female_label_encoders
-                    scaler = female_scaler
-                    model = female_model
-
-                # Encode input
                 encoded_input = input_data.copy()
                 for column in encoded_input.columns:
                     encoded_input[column] = label_encoders[column].transform(encoded_input[column])
 
-                # Scale input
                 scaled_input = scaler.transform(encoded_input)
-
-                # Make prediction
-                prediction = model.predict(scaled_input)
-                prediction_prob = model.predict_proba(scaled_input)[0]
+                prediction = nb_model.predict(scaled_input)
+                prediction_prob = nb_model.predict_proba(scaled_input)[0]
 
                 st.subheader("Hasil Prediksi")
 
