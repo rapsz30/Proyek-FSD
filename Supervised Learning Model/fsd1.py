@@ -83,9 +83,14 @@ def safe_int_convert(value, default=0):
 
 # Calculate risk score
 def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
-    risk_score = 0
+    # Initialize variables to store individual components
+    age_score = 0
+    diabetes_score = 0
+    smoking_score = 0
+    sbp_score = 0
+    tch_score = 0
     
-    # Age risk
+    # Calculate Age score
     age_start = safe_int_convert(age)
     if 35 <= age_start <= 44:
         age_value = math.log(40)
@@ -99,23 +104,25 @@ def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
         age_value = math.log(80)
     
     if sex == "Male":
-        risk_score += age_value * 3.06117
-    else:
-        risk_score += age_value * 2.32888
+        age_score = age_value * 3.06117
+    elif sex == "Female":
+        age_score = age_value * 2.32888
     
-    # Diabetes risk - Updated logic
+    # Calculate Diabetes score
+    diabetes_value = 1 if diabetes == "Yes" else 0
     if sex == "Male":
-        risk_score += (1 if diabetes == "Yes" else 0) * 0.57367
-    else:
-        risk_score += (1 if diabetes == "Yes" else 0) * 0.69154
+        diabetes_score = diabetes_value * 0.57367
+    elif sex == "Female":
+        diabetes_score = diabetes_value * 0.69154
 
-    # Smoking risk - Updated logic
+    # Calculate Smoking score
+    smoking_value = 1 if smoking == "Current" else 0
     if sex == "Male":
-        risk_score += (1 if smoking == "Current" else 0) * 0.65451
-    else:
-        risk_score += (1 if smoking == "Current" else 0) * 0.52873
+        smoking_score = smoking_value * 0.65451
+    elif sex == "Female":
+        smoking_score = smoking_value * 0.52873
     
-    # Blood pressure risk
+    # Calculate SBP score
     sbp_start = safe_int_convert(sbp)
     if sbp_start < 120:
         sbp_value = math.log(115)
@@ -128,16 +135,16 @@ def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
     
     if sbp_start >= 160:
         if sex == "Male":
-            risk_score += sbp_value * 1.99881
-        else:
-            risk_score += sbp_value * 2.82263
+            sbp_score = sbp_value * 1.99881
+        elif sex == "Female":
+            sbp_score = sbp_value * 2.82263
     else:
         if sex == "Male":
-            risk_score += sbp_value * 1.93303
-        else:
-            risk_score += sbp_value * 2.76157
+            sbp_score = sbp_value * 1.93303
+        elif sex == "Female":
+            sbp_score = sbp_value * 2.76157
     
-    # Cholesterol risk
+    # Calculate TCH score
     tch_start = safe_int_convert(tch)
     if tch_start < 150:
         tch_value = math.log(125)
@@ -151,9 +158,18 @@ def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
         tch_value = math.log(325)
     
     if sex == "Male":
-        risk_score += tch_value * 1.1237
-    else:
-        risk_score += tch_value * 1.20904
+        tch_score = tch_value * 1.1237
+    elif sex == "Female":
+        tch_score = tch_value * 1.20904
+
+    # Sum all components
+    x = age_score + diabetes_score + smoking_score + sbp_score + tch_score
+    
+    # Calculate final risk probability
+    y = x - 23.9802
+    z = math.exp(y)  # e^y
+    a = z * math.log(0.88936)  # Changed to correct calculation
+    risk_score = 1 - math.exp(a)  # Final probability calculation
     
     return risk_score
 
@@ -197,6 +213,7 @@ def main():
         st.write(f"Mean Squared Error (MSE): {mse:.4f}")
         st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
 
+    # Update the Prediksi section in main() function to use new risk calculation
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
 
@@ -211,15 +228,9 @@ def main():
 
         if st.button("Prediksi"):
             try:
-                # Calculate risk score
-                risk_score = calculate_risk_score(age, sex, diabetes, smoking, sbp, tch)
+                # Calculate risk score using the new formula
+                final_prob = calculate_risk_score(age, sex, diabetes, smoking, sbp, tch)
                 
-                # Calculate final risk probability
-                y = risk_score - 23.9802
-                z = math.exp(y)
-                a = 0.88936 ** z
-                final_prob = a
-
                 # Display results
                 st.subheader("Hasil Prediksi")
 
@@ -272,7 +283,7 @@ def main():
             except Exception as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
                 st.error("Pastikan semua input valid dan sesuai format")
-
+    
     else:
         # Header utama
         st.header("Tentang Kami")
