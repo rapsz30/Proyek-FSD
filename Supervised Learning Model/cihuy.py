@@ -1,198 +1,227 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import confusion_matrix, classification_report, mean_squared_error
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-# Load and preprocess the data
+# Risk scoring function
+def calculate_risk_score(user_data):
+    score = 0
+    
+    # Age risk (higher risk for older age groups)
+    age_scores = {
+        '35-44': 0,
+        '45-54': 1,
+        '55-64': 2,
+        '65-74': 3,
+        '>=75': 4
+    }
+    score += age_scores.get(user_data.get('Age'), 0)
+    
+    # Family history risk
+    if user_data.get('Family history of CVD') == 'Yes':
+        score += 2
+    
+    # Diabetes risk
+    if user_data.get('Diabetes Mellitus') == 'Diabetes':
+        score += 2
+    
+    # Smoking risk
+    if user_data.get('Smoking status') == 'Smoker':
+        score += 2
+    
+    # Blood pressure risk
+    sbp_scores = {
+        '<120 mmHg': 0,
+        '120-139 mmHg': 1,
+        '140-159 mmHg': 2,
+        '>=160 mmHg': 3
+    }
+    score += sbp_scores.get(user_data.get('SBP'), 0)
+    
+    # Cholesterol risk
+    tch_scores = {
+        '<150 mg/dL': 0,
+        '150-200 mg/dL': 1,
+        '200-250 mg/dL': 2,
+        '250-300 mg/dL': 3,
+        '>=300 mg/dL': 4
+    }
+    score += tch_scores.get(user_data.get('Tch'), 0)
+    
+    # High WHR risk
+    if user_data.get('High WHR') == 'Yes':
+        score += 1
+    
+    return score
+
+# Load and preprocess data
 @st.cache_data
-def load_data():
-    # Read the CSV file
-    data = pd.read_csv("riskchartsampledata.csv", header=None)
+def load_and_preprocess_data(data, target_column):
+    # Use the first 100 rows
+    data = data.head(100)
     
-    # Set the initial column name
-    data.columns = ['combined']
-    
-    # Split the combined column into separate columns
-    data[['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 
-          'Smoking status', 'SBP', 'Tch']] = data['combined'].str.split(';', expand=True)
-    
-    # Drop the original combined column
-    data = data.drop('combined', axis=1)
-    
-    # Drop the first row (index 0) which contains duplicate header
-    data = data.iloc[1:]
-    
-    # Drop duplicate rows and reset index
-    data = data.drop_duplicates().reset_index(drop=True)
-    
-    # Remove any rows that are completely empty
-    data = data.dropna(how='all')
+    # Separate features and target
+    X = data.drop(target_column, axis=1)
+    y = data[target_column]
 
-    # Encode categorical variables for model training
-    data_encoded = data.copy()
-    label_encoders = {}
-    
-    # Create and store label encoders for each column
-    for col in data_encoded.columns:
+    # Encode categorical variables
+    encoders = {}
+    for column in X.columns:
         le = LabelEncoder()
-        data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
-        label_encoders[col] = le
+        X[column] = le.fit_transform(X[column])
+        encoders[column] = le
 
-    # Split features and target
-    X = data_encoded.drop('High WHR', axis=1)
-    y = data_encoded['High WHR']
+    return X, y, data, encoders
 
-    # Split data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Scale features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
-
-# Train Naive Bayes model
+# Train model
 @st.cache_resource
-def train_naive_bayes(X_train_scaled, y_train):
-    nb_model = GaussianNB()
-    nb_model.fit(X_train_scaled, y_train)
-    return nb_model
+def train_model(X, y):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=10,
+        min_samples_split=5,
+        min_samples_leaf=2,
+        random_state=42
+    )
+    model.fit(X_train, y_train)
+    
+    # Evaluate model
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, average='weighted')
+    recall = recall_score(y_test, y_pred, average='weighted')
+    f1 = f1_score(y_test, y_pred, average='weighted')
+    
+    return model, accuracy, precision, recall, f1
 
-# Evaluate model
-def evaluate_model(model, X_test_scaled, y_test):
-    y_pred = model.predict(X_test_scaled)
-    cm = confusion_matrix(y_test, y_pred)
-    cr = classification_report(y_test, y_pred, output_dict=True)
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    return cm, cr, mse, rmse
-
-# Main Streamlit app
+# Streamlit app
 def main():
-    st.title("Prediksi Risiko Penyakit Jantung menggunakan Naive Bayes")
+    st.title("Heart Disease Risk Prediction")
+    st.write("This app predicts the risk of heart disease based on various health factors.")
 
-    # Load data and train model
-    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders = load_data()
-    nb_model = train_naive_bayes(X_train_scaled, y_train)
+    # File uploader
+    uploaded_file = st.file_uploader("Choose your CSV file", type="csv")
+    
+    if uploaded_file is not None:
+        # Read CSV file
+        data = pd.read_csv(uploaded_file, sep=';')
+        
+        # Display the first few rows of the data
+        st.subheader("Data Preview (First 100 rows)")
+        st.write(data.head(100))
 
-    # Sidebar
-    st.sidebar.title("Navigasi")
-    page = st.sidebar.radio("Pilih Halaman", ["Dataset", "Evaluasi", "Prediksi", "Tentang Kami"])
+        # Allow user to select the target column
+        target_column = st.selectbox("Select the target column (Risk)", data.columns)
 
-    if page == "Dataset":
-        st.header("Dataset")
-        st.write(data)
+        if st.button("Train Model"):
+            # Preprocess data
+            X, y, processed_data, encoders = load_and_preprocess_data(data, target_column)
 
-        st.subheader("Heatmap Korelasi")
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(data_encoded.corr(), annot=True, cmap='coolwarm', ax=ax)
-        plt.title("Heatmap Korelasi")
-        st.pyplot(fig)
+            # Train model
+            model, accuracy, precision, recall, f1 = train_model(X, y)
 
-    elif page == "Evaluasi":
-        st.header("Evaluasi Model Naive Bayes")
+            # Store model and data in session state
+            st.session_state['model'] = model
+            st.session_state['processed_data'] = processed_data
+            st.session_state['feature_columns'] = X.columns
+            st.session_state['encoders'] = encoders
 
-        cm, cr, mse, rmse = evaluate_model(nb_model, X_test_scaled, y_test)
+            # Display model performance
+            st.subheader("Model Performance")
+            st.write(f"Accuracy: {accuracy:.2f}")
+            st.write(f"Precision: {precision:.2f}")
+            st.write(f"Recall: {recall:.2f}")
+            st.write(f"F1-score: {f1:.2f}")
 
-        st.subheader("Matriks Konfusi")
-        fig, ax = plt.subplots(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        plt.title("Matriks Konfusi - Naive Bayes")
-        st.pyplot(fig)
+    # Check if model has been trained
+    if 'model' in st.session_state:
+        st.subheader("Enter Your Information")
+        user_input = {}
+        for column in st.session_state['feature_columns']:
+            unique_values = sorted(st.session_state['processed_data'][column].unique())
+            user_input[column] = st.selectbox(f"{column}", unique_values)
 
-        st.subheader("Laporan Klasifikasi")
-        st.write(pd.DataFrame(cr).transpose())
+        # Make prediction
+        if st.button("Predict Risk"):
+            # Calculate risk score
+            risk_score = calculate_risk_score(user_input)
+            
+            # Prepare data for model prediction
+            user_data = pd.DataFrame(user_input, index=[0])
+            
+            # Encode user input
+            for column in user_data.columns:
+                le = st.session_state['encoders'][column]
+                user_data[column] = le.transform(user_data[column])
 
-        st.subheader("Metrik Evaluasi")
-        st.write(f"Mean Squared Error (MSE): {mse:.4f}")
-        st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
+            # Make prediction using model probability
+            prediction_prob = st.session_state['model'].predict_proba(user_data)[0]
+            
+            # Calculate maximum possible risk score
+            max_risk_score = 16  # Sum of maximum possible points
+            
+            # Normalize risk score to 0-1 range
+            normalized_risk_score = risk_score / max_risk_score
+            
+            # Combine model probability and risk score
+            final_risk_prob = (prediction_prob[1] + normalized_risk_score) / 2
+            
+            # Determine risk level based on combined probability
+            risk_level = "High" if final_risk_prob > 0.4 else "Low"
 
-    elif page == "Prediksi":
-        st.header("Prediksi Risiko Penyakit Jantung")
+            st.subheader("Prediction Result")
+            st.write(f"The predicted risk of heart disease is: {risk_level}")
+            
+            # Display risk factors explanation
+            st.subheader("Risk Analysis")
+            st.write(f"Risk Score: {risk_score} out of {max_risk_score}")
+            st.write(f"Combined Risk Probability: {final_risk_prob:.2f}")
+            st.write("\nRisk Factors Found:")
+            
+            if user_input['Age'] in ['55-64', '65-74', '>=75']:
+                st.write("- Advanced age increases risk")
+            if user_input['Family history of CVD'] == 'Yes':
+                st.write("- Family history of cardiovascular disease")
+            if user_input['Diabetes Mellitus'] == 'Diabetes':
+                st.write("- Presence of diabetes")
+            if user_input['Smoking status'] == 'Smoker':
+                st.write("- Active smoking status")
+            if user_input['SBP'] in ['>=160 mmHg', '140-159 mmHg']:
+                st.write("- Elevated blood pressure")
+            if user_input['Tch'] in ['>=300 mg/dL', '250-300 mg/dL', '200-250 mg/dL']:
+                st.write("- High cholesterol levels")
+            if user_input['High WHR'] == 'Yes':
+                st.write("- High waist-to-hip ratio")
 
-        # Create input fields for each feature
-        age = st.selectbox("Age", data['Age'].unique())
-        sex = st.selectbox("Sex", data['Sex'].unique())
-        family_history = st.selectbox("Family history of CVD", data['Family history of CVD'].unique())
-        diabetes = st.selectbox("Diabetes Mellitus", data['Diabetes Mellitus'].unique())
-        smoking = st.selectbox("Smoking status", data['Smoking status'].unique())
-        sbp = st.selectbox("SBP", data['SBP'].unique())
-        tch = st.selectbox("Tch", data['Tch'].unique())
-
-        if st.button("Prediksi"):
-            try:
-                # Create input DataFrame
-                input_data = pd.DataFrame({
-                    'Age': [age],
-                    'Sex': [sex],
-                    'Family history of CVD': [family_history],
-                    'Diabetes Mellitus': [diabetes],
-                    'Smoking status': [smoking],
-                    'SBP': [sbp],
-                    'Tch': [tch]
-                })
-
-                # Encode the input data using the same label encoders
-                input_encoded = pd.DataFrame()
-                for col in input_data.columns:
-                    le = label_encoders[col]
-                    input_encoded[col] = le.transform(input_data[col].astype(str))
-
-                # Scale the encoded input
-                input_scaled = scaler.transform(input_encoded)
-
-                # Make prediction
-                pred_proba = nb_model.predict_proba(input_scaled)[0]
-                pred_class = nb_model.predict(input_scaled)[0]
-                
-                # Get the original label for the prediction
-                original_label = label_encoders['High WHR'].inverse_transform([pred_class])[0]
-
-                # Display risk level with color                
-                st.subheader("Hasil Prediksi")
-                risk_color = "red" if pred_proba[1] > 0.5 else "green"
-                risk_level = "Tinggi" if pred_proba[1] > 0.5 else "Rendah"
-                st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
-                          unsafe_allow_html=True)
-                st.write(f"Probabilitas Risiko Rendah: {pred_proba[0]:.2f}")
-                st.write(f"Probabilitas Risiko Tinggi: {pred_proba[1]:.2f}")
-            except ValueError as e:
-                st.error(f"Error dalam pemrosesan input: {str(e)}")
-                st.error("Pastikan semua input valid dan sesuai format")
+            # Display recommendation based on risk level
+            st.subheader("Recommendations")
+            if risk_level == "High":
+                st.write("""
+                Based on your risk factors, it is recommended to:
+                1. Consult with a healthcare provider
+                2. Monitor blood pressure regularly
+                3. Maintain a healthy diet
+                4. Exercise regularly
+                5. Consider smoking cessation if applicable
+                6. Monitor blood sugar levels if diabetic
+                """)
+            else:
+                st.write("""
+                While your risk level is currently low, it's important to:
+                1. Maintain a healthy lifestyle
+                2. Have regular health check-ups
+                3. Stay physically active
+                4. Maintain a balanced diet
+                """)
 
     else:
-        # Header utama
-        st.header("Tentang Kami")
-        st.markdown(
-            """
-            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung menggunakan algoritma Naive Bayes. 
-            Model ini mempertimbangkan berbagai faktor seperti usia, jenis kelamin, riwayat keluarga dengan 
-            penyakit kardiovaskular (CVD), diabetes mellitus, rasio lingkar pinggang terhadap pinggul (WHR) 
-            yang tinggi, status merokok, tekanan darah sistolik (SBP), dan kadar kolesterol total (Tch).
-            """
-        )
-
-        # Subheader untuk tim
-        st.subheader("Dibuat oleh Kelompok Sembarang Wes:")
-        st.markdown(
-            """
-            - *Mohamad Rafi Hendryansah* (23523064)  
-            - *Afifuddin Mahfud* (23523076)  
-            - *Yusuf Aditya Kresnayana* (23523077)  
-            - *Naufal Rizqy Wardono* (23523097)  
-            - *Mustaqim Adiyatno* (23523107)  
-            - *M. Trendo Rafly Dipu* (23523116)
-            """
-        )
-        st.markdown("---")
-
-        st.info("Jelajahi aplikasi ini untuk mempelajari lebih lanjut tentang kesehatan jantung Anda!")
+        st.info("Please upload a CSV file and train the model to proceed.")
 
 if __name__ == "__main__":
     main()
+
