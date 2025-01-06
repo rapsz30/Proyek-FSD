@@ -19,131 +19,101 @@ def load_data():
     data = data.drop('combined', axis=1)
     data = data.iloc[1:].drop_duplicates().reset_index(drop=True).dropna(how='all')
 
-    data_encoded = data.copy()
-    label_encoders = {}
-    for col in data_encoded.columns:
+    # Separate data by gender
+    male_data = data[data['Sex'] == 'Male']
+    female_data = data[data['Sex'] == 'Female']
+
+    # Process male data
+    male_encoded = male_data.copy()
+    male_label_encoders = {}
+    for col in male_encoded.columns:
         le = LabelEncoder()
-        data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
-        label_encoders[col] = le
+        male_encoded[col] = le.fit_transform(male_encoded[col].astype(str))
+        male_label_encoders[col] = le
 
-    X = data_encoded.drop('High WHR', axis=1)
-    y = data_encoded['High WHR']
+    # Process female data
+    female_encoded = female_data.copy()
+    female_label_encoders = {}
+    for col in female_encoded.columns:
+        le = LabelEncoder()
+        female_encoded[col] = le.fit_transform(female_encoded[col].astype(str))
+        female_label_encoders[col] = le
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    # Prepare male training data
+    X_male = male_encoded.drop(['High WHR', 'Sex'], axis=1)
+    y_male = male_encoded['High WHR']
 
-    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
+    # Prepare female training data
+    X_female = female_encoded.drop(['High WHR', 'Sex'], axis=1)
+    y_female = female_encoded['High WHR']
+
+    # Split and scale male data
+    X_male_train, X_male_test, y_male_train, y_male_test = train_test_split(
+        X_male, y_male, test_size=0.2, random_state=42
+    )
+    male_scaler = StandardScaler()
+    X_male_train_scaled = male_scaler.fit_transform(X_male_train)
+    X_male_test_scaled = male_scaler.transform(X_male_test)
+
+    # Split and scale female data
+    X_female_train, X_female_test, y_female_train, y_female_test = train_test_split(
+        X_female, y_female, test_size=0.2, random_state=42
+    )
+    female_scaler = StandardScaler()
+    X_female_train_scaled = female_scaler.fit_transform(X_female_train)
+    X_female_test_scaled = female_scaler.transform(X_female_test)
+
+    return (data, male_encoded, female_encoded, 
+            X_male_train_scaled, X_male_test_scaled, y_male_train, y_male_test,
+            X_female_train_scaled, X_female_test_scaled, y_female_train, y_female_test,
+            male_scaler, female_scaler, male_label_encoders, female_label_encoders)
 
 @st.cache_resource
-def train_naive_bayes(X_train_scaled, y_train):
-    nb_model = GaussianNB(priors=[0.6, 0.4])
-    nb_model.fit(X_train_scaled, y_train)
-    return nb_model
+def train_gender_specific_models(X_male_train_scaled, y_male_train, 
+                               X_female_train_scaled, y_female_train):
+    # Train male model
+    male_model = GaussianNB()
+    male_model.fit(X_male_train_scaled, y_male_train)
+    
+    # Train female model
+    female_model = GaussianNB()
+    female_model.fit(X_female_train_scaled, y_female_train)
+    
+    return male_model, female_model
 
-def evaluate_model(model, X_test_scaled, y_test):
-    y_pred = model.predict(X_test_scaled)
-    cm = confusion_matrix(y_test, y_pred)
-    cr = classification_report(y_test, y_pred, output_dict=True)
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    return cm, cr, mse, rmse
+def evaluate_models(male_model, female_model, 
+                   X_male_test_scaled, y_male_test,
+                   X_female_test_scaled, y_female_test):
+    # Evaluate male model
+    male_pred = male_model.predict(X_male_test_scaled)
+    male_cm = confusion_matrix(y_male_test, male_pred)
+    male_cr = classification_report(y_male_test, male_pred, output_dict=True)
+    male_mse = mean_squared_error(y_male_test, male_pred)
+    male_rmse = np.sqrt(male_mse)
 
-def safe_int_convert(value, default=0):
-    try:
-        return int(value.split('-')[0])
-    except (ValueError, AttributeError, IndexError):
-        return default
+    # Evaluate female model
+    female_pred = female_model.predict(X_female_test_scaled)
+    female_cm = confusion_matrix(y_female_test, female_pred)
+    female_cr = classification_report(y_female_test, female_pred, output_dict=True)
+    female_mse = mean_squared_error(y_female_test, female_pred)
+    female_rmse = np.sqrt(female_mse)
 
-def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
-    # Calculate Age score
-    age_start = safe_int_convert(age)
-    if 35 <= age_start <= 44:
-        age_value = math.log(40)
-    elif 45 <= age_start <= 54:
-        age_value = math.log(50)
-    elif 55 <= age_start <= 64:
-        age_value = math.log(60)
-    elif 65 <= age_start <= 74:
-        age_value = math.log(70)
-    else:
-        age_value = math.log(80)
-    
-    if sex == "Male":
-        age_score = age_value * 3.06117
-    elif sex == "Female":
-        age_score = age_value * 2.32888
-    
-    # Calculate Diabetes score
-    diabetes_value = 1 if diabetes == "Diabetes" else 0
-    if sex == "Male":
-        diabetes_score = diabetes_value * 0.57367
-    elif sex == "Female":
-        diabetes_score = diabetes_value * 0.69154
-
-    # Calculate Smoking score
-    smoking_value = 1 if smoking == "Smoker" else 0
-    if sex == "Male":
-        smoking_score = smoking_value * 0.65451
-    elif sex == "Female":
-        smoking_score = smoking_value * 0.52873
-    
-    # Calculate SBP score
-    sbp_start = safe_int_convert(sbp)
-    if sbp_start < 120:
-        sbp_value = math.log(115)
-    elif 120 <= sbp_start <= 139:
-        sbp_value = math.log(130)
-    elif 140 <= sbp_start <= 159:
-        sbp_value = math.log(150)
-    else:
-        sbp_value = math.log(170)
-    
-    if sbp_start >= 160:
-        if sex == "Male":
-            sbp_score = sbp_value * 1.99881
-        elif sex == "Female":
-            sbp_score = sbp_value * 2.82263
-    else:
-        if sex == "Male":
-            sbp_score = sbp_value * 1.93303
-        elif sex == "Female":
-            sbp_score = sbp_value * 2.76157
-    
-    # Calculate TCH score
-    tch_start = safe_int_convert(tch)
-    if tch_start < 150:
-        tch_value = math.log(125)
-    elif 150 <= tch_start <= 200:
-        tch_value = math.log(175)
-    elif 200 <= tch_start <= 250:
-        tch_value = math.log(225)
-    elif 250 <= tch_start <= 300:
-        tch_value = math.log(275)
-    else:
-        tch_value = math.log(325)
-    
-    if sex == "Male":
-        tch_score = tch_value * 1.1237
-    elif sex == "Female":
-        tch_score = tch_value * 1.20904
-    
-    # Calculate final risk score
-    x = age_score + diabetes_score + smoking_score + sbp_score + tch_score
-    y = x - 23.9802
-    
-    z = math.pow(2.71828, y)
-    a = math.pow(0.88936, z)
-    risk_score = 1 - a
-    
-    return risk_score
+    return (male_cm, male_cr, male_mse, male_rmse,
+            female_cm, female_cr, female_mse, female_rmse)
 
 def main():
     st.title("Prediksi Risiko Penyakit Jantung menggunakan Naive Bayes")
 
-    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders = load_data()
-    nb_model = train_naive_bayes(X_train_scaled, y_train)
+    # Load data and train models
+    (data, male_encoded, female_encoded, 
+     X_male_train_scaled, X_male_test_scaled, y_male_train, y_male_test,
+     X_female_train_scaled, X_female_test_scaled, y_female_train, y_female_test,
+     male_scaler, female_scaler, male_label_encoders, female_label_encoders) = load_data()
+
+    male_model, female_model = train_gender_specific_models(
+        X_male_train_scaled, y_male_train,
+        X_female_train_scaled, y_female_train
+    )
 
     st.sidebar.title("Navigasi")
     page = st.sidebar.radio("Pilih Halaman", ["Dataset", "Evaluasi", "Prediksi", "Tentang Kami"])
@@ -151,59 +121,119 @@ def main():
     if page == "Dataset":
         st.header("Dataset")
         st.write(data)
-
-        st.subheader("Heatmap Korelasi")
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(data_encoded.corr(), annot=True, cmap='coolwarm', ax=ax)
-        plt.title("Heatmap Korelasi")
-        st.pyplot(fig)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Distribusi Gender")
+            gender_dist = data['Sex'].value_counts()
+            fig, ax = plt.subplots()
+            gender_dist.plot(kind='bar')
+            plt.title("Distribusi Gender")
+            st.pyplot(fig)
+            
+        with col2:
+            st.subheader("Distribusi WHR")
+            whr_dist = data['High WHR'].value_counts()
+            fig, ax = plt.subplots()
+            whr_dist.plot(kind='bar')
+            plt.title("Distribusi High WHR")
+            st.pyplot(fig)
 
     elif page == "Evaluasi":
         st.header("Evaluasi Model Naive Bayes")
 
-        cm, cr, mse, rmse = evaluate_model(nb_model, X_test_scaled, y_test)
+        (male_cm, male_cr, male_mse, male_rmse,
+         female_cm, female_cr, female_mse, female_rmse) = evaluate_models(
+            male_model, female_model,
+            X_male_test_scaled, y_male_test,
+            X_female_test_scaled, y_female_test
+        )
 
-        st.subheader("Matriks Konfusi")
-        fig, ax = plt.subplots(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        plt.title("Matriks Konfusi - Naive Bayes")
-        st.pyplot(fig)
+        col1, col2 = st.columns(2)
 
-        st.subheader("Laporan Klasifikasi")
-        st.write(pd.DataFrame(cr).transpose())
+        with col1:
+            st.subheader("Evaluasi Model Laki-laki")
+            fig, ax = plt.subplots(figsize=(6, 4))
+            sns.heatmap(male_cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+            plt.title("Matriks Konfusi - Model Laki-laki")
+            st.pyplot(fig)
+            st.write(pd.DataFrame(male_cr).transpose())
+            st.write(f"RMSE: {male_rmse:.4f}")
 
-        st.subheader("Metrik Evaluasi")
-        st.write(f"Mean Squared Error (MSE): {mse:.4f}")
-        st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
+        with col2:
+            st.subheader("Evaluasi Model Perempuan")
+            fig, ax = plt.subplots(figsize=(6, 4))
+            sns.heatmap(female_cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+            plt.title("Matriks Konfusi - Model Perempuan")
+            st.pyplot(fig)
+            st.write(pd.DataFrame(female_cr).transpose())
+            st.write(f"RMSE: {female_rmse:.4f}")
 
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
 
-        age = st.selectbox("Age", sorted(data['Age'].unique()))
-        sex = st.selectbox("Sex", sorted(data['Sex'].unique()))
-        family_history = st.selectbox("Family history of CVD", sorted(data['Family history of CVD'].unique()))
-        diabetes = st.selectbox("Diabetes Mellitus", sorted(data['Diabetes Mellitus'].unique()))
-        smoking = st.selectbox("Smoking status", sorted(data['Smoking status'].unique()))
-        sbp = st.selectbox("SBP", sorted(data['SBP'].unique()))
-        tch = st.selectbox("Tch", sorted(data['Tch'].unique()))
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            age = st.selectbox("Age", sorted(data['Age'].unique()))
+            sex = st.selectbox("Sex", sorted(data['Sex'].unique()))
+            family_history = st.selectbox("Family history of CVD", sorted(data['Family history of CVD'].unique()))
+            diabetes = st.selectbox("Diabetes Mellitus", sorted(data['Diabetes Mellitus'].unique()))
+
+        with col2:
+            smoking = st.selectbox("Smoking status", sorted(data['Smoking status'].unique()))
+            sbp = st.selectbox("SBP", sorted(data['SBP'].unique()))
+            tch = st.selectbox("Tch", sorted(data['Tch'].unique()))
 
         if st.button("Prediksi"):
             try:
-                risk_score = calculate_risk_score(age, sex, diabetes, smoking, sbp, tch)
-                final_prob = risk_score
+                # Create input data
+                input_data = pd.DataFrame({
+                    'Age': [age],
+                    'Family history of CVD': [family_history],
+                    'Diabetes Mellitus': [diabetes],
+                    'Smoking status': [smoking],
+                    'SBP': [sbp],
+                    'Tch': [tch]
+                })
+
+                # Choose appropriate model and preprocessing based on gender
+                if sex == 'Male':
+                    label_encoders = male_label_encoders
+                    scaler = male_scaler
+                    model = male_model
+                else:
+                    label_encoders = female_label_encoders
+                    scaler = female_scaler
+                    model = female_model
+
+                # Encode input
+                encoded_input = input_data.copy()
+                for column in encoded_input.columns:
+                    encoded_input[column] = label_encoders[column].transform(encoded_input[column])
+
+                # Scale input
+                scaled_input = scaler.transform(encoded_input)
+
+                # Make prediction
+                prediction = model.predict(scaled_input)
+                prediction_prob = model.predict_proba(scaled_input)[0]
 
                 st.subheader("Hasil Prediksi")
 
-                if final_prob < 0.1:
+                prob_high_whr = prediction_prob[1]
+
+                if prob_high_whr < 0.2:
                     risk_level = "Sangat Rendah"
                     risk_color = "green"
-                elif final_prob < 0.2:
+                elif prob_high_whr < 0.4:
                     risk_level = "Rendah"
                     risk_color = "lightgreen"
-                elif final_prob < 0.3:
+                elif prob_high_whr < 0.6:
                     risk_level = "Sedang"
                     risk_color = "yellow"
-                elif final_prob < 0.4:
+                elif prob_high_whr < 0.8:
                     risk_level = "Tinggi"
                     risk_color = "orange"
                 else:
@@ -211,37 +241,18 @@ def main():
                     risk_color = "red"
 
                 st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
-                            unsafe_allow_html=True)
+                          unsafe_allow_html=True)
+                
+                st.write(f"Probabilitas Risiko WHR Tinggi: {prob_high_whr:.4f}")
+                st.write(f"Probabilitas Risiko WHR Rendah: {prediction_prob[0]:.4f}")
 
-                st.write(f"Probabilitas Risiko: {final_prob:.4f}")
-
-                st.subheader("Faktor Risiko Teridentifikasi:")
-                age_start = safe_int_convert(age)
-                if age_start >= 55:
-                    st.write("- Usia di atas 55 tahun")
-                elif age_start >= 45:
-                    st.write("- Usia di atas 45 tahun")
-                if family_history == "Yes":
-                    st.write("- Riwayat keluarga dengan CVD")
-                if diabetes == "Diabetes":
-                    st.write("- Diabetes Mellitus")
-                if smoking == "Smoker":
-                    st.write("- Perokok aktif")
-                sbp_start = safe_int_convert(sbp)
-                if sbp_start >= 140:
-                    st.write("- Tekanan darah sistolik tinggi (≥140 mmHg)")
-                elif sbp_start >= 120:
-                    st.write("- Tekanan darah sistolik agak tinggi (120-139 mmHg)")
-                tch_start = safe_int_convert(tch)
-                if tch_start >= 240:
-                    st.write("- Kolesterol total tinggi (≥240 mg/dL)")
-                elif tch_start >= 200:
-                    st.write("- Kolesterol total agak tinggi (200-239 mg/dL)")
+                whr_status = "Tinggi" if prediction[0] == 1 else "Rendah"
+                st.write(f"Prediksi WHR: {whr_status}")
 
             except Exception as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
                 st.error("Pastikan semua input valid dan sesuai format")
-    
+
     else:
         st.header("Tentang Kami")
         st.markdown(
