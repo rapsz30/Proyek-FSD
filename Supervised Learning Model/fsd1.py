@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import confusion_matrix, classification_report, mean_squared_error
+import math
 
 # Load and preprocess the data
 @st.cache_data
@@ -81,47 +82,78 @@ def safe_int_convert(value, default=0):
         return default
 
 # Calculate risk score
-def calculate_risk_score(age, sex, family_history, diabetes, smoking, sbp, tch):
+def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
     risk_score = 0
     
     # Age risk
     age_start = safe_int_convert(age)
-    if age_start >= 55:
-        risk_score += 2
-    elif age_start >= 45:
-        risk_score += 1
+    if 35 <= age_start <= 44:
+        age_value = math.log(40)
+    elif 45 <= age_start <= 54:
+        age_value = math.log(50)
+    elif 55 <= age_start <= 64:
+        age_value = math.log(60)
+    elif 65 <= age_start <= 74:
+        age_value = math.log(70)
+    else:
+        age_value = math.log(80)
     
-    # Family history risk
-    if family_history == "Yes":
-        risk_score += 1
+    if sex == "Male":
+        risk_score += age_value * 3.06117
+    else:
+        risk_score += age_value * 2.32888
     
-    # Diabetes risk
-    if diabetes == "Yes":
-        risk_score += 2
-    
-    # Smoking risk
-    if smoking == "Current":
-        risk_score += 2
-    elif smoking == "Former":
-        risk_score += 1
+    # Diabetes risk - Updated logic
+    if sex == "Male":
+        risk_score += (1 if diabetes == "Yes" else 0) * 0.57367
+    else:
+        risk_score += (1 if diabetes == "Yes" else 0) * 0.69154
+
+    # Smoking risk - Updated logic
+    if sex == "Male":
+        risk_score += (1 if smoking == "Current" else 0) * 0.65451
+    else:
+        risk_score += (1 if smoking == "Current" else 0) * 0.52873
     
     # Blood pressure risk
     sbp_start = safe_int_convert(sbp)
-    if sbp_start >= 140:
-        risk_score += 2
-    elif sbp_start >= 130:
-        risk_score += 1
+    if sbp_start < 120:
+        sbp_value = math.log(115)
+    elif 120 <= sbp_start <= 139:
+        sbp_value = math.log(130)
+    elif 140 <= sbp_start <= 159:
+        sbp_value = math.log(150)
+    else:
+        sbp_value = math.log(170)
+    
+    if sbp_start >= 160:
+        if sex == "Male":
+            risk_score += sbp_value * 1.99881
+        else:
+            risk_score += sbp_value * 2.82263
+    else:
+        if sex == "Male":
+            risk_score += sbp_value * 1.93303
+        else:
+            risk_score += sbp_value * 2.76157
     
     # Cholesterol risk
     tch_start = safe_int_convert(tch)
-    if tch_start >= 240:
-        risk_score += 2
-    elif tch_start >= 200:
-        risk_score += 1
+    if tch_start < 150:
+        tch_value = math.log(125)
+    elif 150 <= tch_start <= 200:
+        tch_value = math.log(175)
+    elif 200 <= tch_start <= 250:
+        tch_value = math.log(225)
+    elif 250 <= tch_start <= 300:
+        tch_value = math.log(275)
+    else:
+        tch_value = math.log(325)
     
-    # Adjust for sex
-    if sex == "Female":
-        risk_score *= 0.6  # Further reduce risk score for females
+    if sex == "Male":
+        risk_score += tch_value * 1.1237
+    else:
+        risk_score += tch_value * 1.20904
     
     return risk_score
 
@@ -179,55 +211,29 @@ def main():
 
         if st.button("Prediksi"):
             try:
-                # Create input DataFrame
-                input_data = pd.DataFrame({
-                    'Age': [age],
-                    'Sex': [sex],
-                    'Family history of CVD': [family_history],
-                    'Diabetes Mellitus': [diabetes],
-                    'Smoking status': [smoking],
-                    'SBP': [sbp],
-                    'Tch': [tch]
-                })
-
-                # Encode the input data
-                input_encoded = pd.DataFrame()
-                for col in input_data.columns:
-                    le = label_encoders[col]
-                    input_encoded[col] = le.transform(input_data[col].astype(str))
-
-                # Scale the encoded input
-                input_scaled = scaler.transform(input_encoded)
-
-                # Make prediction
-                pred_proba = nb_model.predict_proba(input_scaled)[0]
-                
                 # Calculate risk score
-                risk_score = calculate_risk_score(age, sex, family_history, diabetes, smoking, sbp, tch)
+                risk_score = calculate_risk_score(age, sex, diabetes, smoking, sbp, tch)
                 
-                # Adjust final probability based on risk score and sex
-                if sex == "Female":
-                    base_prob = pred_proba[1] * 0.6  # Further reduce base probability for females
-                    final_prob = (base_prob * 0.5 + (risk_score / 20) * 0.5)  # Equal weight to model and risk score
-                else:
-                    final_prob = (pred_proba[1] * 0.7 + (risk_score / 15) * 0.3)  # More weight to model prediction for males
-
-                final_prob = max(0, min(1, final_prob))  # Ensure probability is between 0 and 1
+                # Calculate final risk probability
+                y = risk_score - 23.9802
+                z = math.exp(y)
+                a = 0.88936 ** z
+                final_prob = a
 
                 # Display results
                 st.subheader("Hasil Prediksi")
 
                 # Define risk levels
-                if final_prob < 0.2:
+                if final_prob < 0.1:
                     risk_level = "Sangat Rendah"
                     risk_color = "green"
-                elif final_prob < 0.4:
+                elif final_prob < 0.2:
                     risk_level = "Rendah"
                     risk_color = "lightgreen"
-                elif final_prob < 0.6:
+                elif final_prob < 0.3:
                     risk_level = "Sedang"
                     risk_color = "yellow"
-                elif final_prob < 0.8:
+                elif final_prob < 0.4:
                     risk_level = "Tinggi"
                     risk_color = "orange"
                 else:
@@ -237,7 +243,7 @@ def main():
                 st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
                             unsafe_allow_html=True)
 
-                st.write(f"Probabilitas Risiko: {final_prob:.2f}")
+                st.write(f"Probabilitas Risiko: {final_prob:.4f}")
 
                 # Display risk factors
                 st.subheader("Faktor Risiko Teridentifikasi:")
@@ -252,13 +258,11 @@ def main():
                     st.write("- Diabetes Mellitus")
                 if smoking == "Current":
                     st.write("- Perokok aktif")
-                elif smoking == "Former":
-                    st.write("- Mantan perokok")
                 sbp_start = safe_int_convert(sbp)
                 if sbp_start >= 140:
                     st.write("- Tekanan darah sistolik tinggi (≥140 mmHg)")
-                elif sbp_start >= 130:
-                    st.write("- Tekanan darah sistolik agak tinggi (130-139 mmHg)")
+                elif sbp_start >= 120:
+                    st.write("- Tekanan darah sistolik agak tinggi (120-139 mmHg)")
                 tch_start = safe_int_convert(tch)
                 if tch_start >= 240:
                     st.write("- Kolesterol total tinggi (≥240 mg/dL)")
