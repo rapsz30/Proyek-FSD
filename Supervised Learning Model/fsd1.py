@@ -12,60 +12,36 @@ import math
 # Load and preprocess the data
 @st.cache_data
 def load_data():
-    # Read the CSV file
     data = pd.read_csv("riskchartsampledata.csv", header=None)
-    
-    # Set the initial column name
     data.columns = ['combined']
-    
-    # Split the combined column into separate columns
     data[['Age', 'Sex', 'Family history of CVD', 'Diabetes Mellitus', 'High WHR', 
           'Smoking status', 'SBP', 'Tch']] = data['combined'].str.split(';', expand=True)
-    
-    # Drop the original combined column
     data = data.drop('combined', axis=1)
-    
-    # Drop the first row (index 0) which contains duplicate header
-    data = data.iloc[1:]
-    
-    # Drop duplicate rows and reset index
-    data = data.drop_duplicates().reset_index(drop=True)
-    
-    # Remove any rows that are completely empty
-    data = data.dropna(how='all')
+    data = data.iloc[1:].drop_duplicates().reset_index(drop=True).dropna(how='all')
 
-    # Encode categorical variables for model training
     data_encoded = data.copy()
     label_encoders = {}
-    
-    # Create and store label encoders for each column
     for col in data_encoded.columns:
         le = LabelEncoder()
         data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
         label_encoders[col] = le
 
-    # Split features and target
     X = data_encoded.drop('High WHR', axis=1)
     y = data_encoded['High WHR']
 
-    # Split data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Scale features
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
     return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
 
-# Train Naive Bayes model
 @st.cache_resource
 def train_naive_bayes(X_train_scaled, y_train):
-    nb_model = GaussianNB(priors=[0.6, 0.4])  # Adjust priors for better balance
+    nb_model = GaussianNB(priors=[0.6, 0.4])
     nb_model.fit(X_train_scaled, y_train)
     return nb_model
 
-# Evaluate model
 def evaluate_model(model, X_test_scaled, y_test):
     y_pred = model.predict(X_test_scaled)
     cm = confusion_matrix(y_test, y_pred)
@@ -74,22 +50,13 @@ def evaluate_model(model, X_test_scaled, y_test):
     rmse = np.sqrt(mse)
     return cm, cr, mse, rmse
 
-# Helper function to safely convert string to int
 def safe_int_convert(value, default=0):
     try:
         return int(value.split('-')[0])
     except (ValueError, AttributeError, IndexError):
         return default
 
-# Calculate risk score
 def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
-    # Initialize variables
-    age_score = 0
-    diabetes_score = 0
-    smoking_score = 0
-    sbp_score = 0
-    tch_score = 0
-    
     # Calculate Age score
     age_start = safe_int_convert(age)
     if 35 <= age_start <= 44:
@@ -109,14 +76,14 @@ def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
         age_score = age_value * 2.32888
     
     # Calculate Diabetes score
-    diabetes_value = 1 if diabetes == "Yes" else 0
+    diabetes_value = 1 if diabetes == "Diabetes" else 0
     if sex == "Male":
         diabetes_score = diabetes_value * 0.57367
     elif sex == "Female":
         diabetes_score = diabetes_value * 0.69154
 
     # Calculate Smoking score
-    smoking_value = 1 if smoking == "Current" else 0
+    smoking_value = 1 if smoking == "Smoker" else 0
     if sex == "Male":
         smoking_score = smoking_value * 0.65451
     elif sex == "Female":
@@ -162,24 +129,22 @@ def calculate_risk_score(age, sex, diabetes, smoking, sbp, tch):
     elif sex == "Female":
         tch_score = tch_value * 1.20904
     
-    # Calculate final risk score using the corrected formula
+    # Calculate final risk score
     x = age_score + diabetes_score + smoking_score + sbp_score + tch_score
     y = x - 23.9802
     
-    # Langsung menggunakan rumus yang diberikan tanpa modifikasi
-    risk_score = float(1 - (pow(0.88936, pow(math.e, y))))
+    z = math.pow(2.71828, y)
+    a = math.pow(0.88936, z)
+    risk_score = 1 - a
     
     return risk_score
 
-# Main Streamlit app
 def main():
     st.title("Prediksi Risiko Penyakit Jantung menggunakan Naive Bayes")
 
-    # Load data and train model
     data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders = load_data()
     nb_model = train_naive_bayes(X_train_scaled, y_train)
 
-    # Sidebar
     st.sidebar.title("Navigasi")
     page = st.sidebar.radio("Pilih Halaman", ["Dataset", "Evaluasi", "Prediksi", "Tentang Kami"])
 
@@ -211,11 +176,9 @@ def main():
         st.write(f"Mean Squared Error (MSE): {mse:.4f}")
         st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
 
-    # Update the Prediksi section in main() function to use new risk calculation
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
 
-        # Create input fields for each feature
         age = st.selectbox("Age", sorted(data['Age'].unique()))
         sex = st.selectbox("Sex", sorted(data['Sex'].unique()))
         family_history = st.selectbox("Family history of CVD", sorted(data['Family history of CVD'].unique()))
@@ -226,13 +189,11 @@ def main():
 
         if st.button("Prediksi"):
             try:
-                # Calculate risk score using the new formula
-                final_prob = calculate_risk_score(age, sex, diabetes, smoking, sbp, tch)
-                
-                # Display results
+                risk_score = calculate_risk_score(age, sex, diabetes, smoking, sbp, tch)
+                final_prob = risk_score
+
                 st.subheader("Hasil Prediksi")
 
-                # Define risk levels
                 if final_prob < 0.1:
                     risk_level = "Sangat Rendah"
                     risk_color = "green"
@@ -254,7 +215,6 @@ def main():
 
                 st.write(f"Probabilitas Risiko: {final_prob:.4f}")
 
-                # Display risk factors
                 st.subheader("Faktor Risiko Teridentifikasi:")
                 age_start = safe_int_convert(age)
                 if age_start >= 55:
@@ -263,9 +223,9 @@ def main():
                     st.write("- Usia di atas 45 tahun")
                 if family_history == "Yes":
                     st.write("- Riwayat keluarga dengan CVD")
-                if diabetes == "Yes":
+                if diabetes == "Diabetes":
                     st.write("- Diabetes Mellitus")
-                if smoking == "Current":
+                if smoking == "Smoker":
                     st.write("- Perokok aktif")
                 sbp_start = safe_int_convert(sbp)
                 if sbp_start >= 140:
@@ -283,7 +243,6 @@ def main():
                 st.error("Pastikan semua input valid dan sesuai format")
     
     else:
-        # Header utama
         st.header("Tentang Kami")
         st.markdown(
             """
@@ -294,7 +253,6 @@ def main():
             """
         )
 
-        # Subheader untuk tim
         st.subheader("Dibuat oleh Kelompok Sembarang Wes:")
         st.markdown(
             """
