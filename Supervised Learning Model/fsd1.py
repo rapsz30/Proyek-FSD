@@ -7,7 +7,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import confusion_matrix, classification_report, mean_squared_error
-import math
 
 # Load and preprocess the data
 @st.cache_data
@@ -29,7 +28,6 @@ def load_data():
     X = data_encoded.drop('High WHR', axis=1)
     y = data_encoded['High WHR']
 
-    # Stratify by both Sex and High WHR to maintain balance
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, 
         test_size=0.2, 
@@ -45,7 +43,6 @@ def load_data():
 
 @st.cache_resource
 def train_naive_bayes(X_train_scaled, y_train):
-    # Use class weights instead of priors
     nb_model = GaussianNB()
     nb_model.fit(X_train_scaled, y_train)
     return nb_model
@@ -57,6 +54,39 @@ def evaluate_model(model, X_test_scaled, y_test):
     mse = mean_squared_error(y_test, y_pred)
     rmse = np.sqrt(mse)
     return cm, cr, mse, rmse
+
+def calculate_risk_level(prob_high_whr, sex, age_range, family_history, diabetes, smoking):
+    if sex == 'Female':
+        base_threshold = 0.4
+    else:
+        base_threshold = 0.5
+
+    # Extract the average age from the age range
+    age_start, age_end = map(int, age_range.split('-'))
+    avg_age = (age_start + age_end) / 2
+
+    # Adjust threshold based on age
+    age_factor = min(avg_age / 100, 1)
+    threshold = base_threshold * (1 + age_factor)
+
+    # Adjust threshold based on other risk factors
+    if family_history == 'Yes':
+        threshold *= 0.9
+    if diabetes == 'Yes':
+        threshold *= 0.9
+    if smoking == 'Current':
+        threshold *= 0.9
+
+    if prob_high_whr < threshold * 0.6:
+        return "Sangat Rendah", "green"
+    elif prob_high_whr < threshold * 0.8:
+        return "Rendah", "lightgreen"
+    elif prob_high_whr < threshold:
+        return "Sedang", "yellow"
+    elif prob_high_whr < threshold * 1.2:
+        return "Tinggi", "orange"
+    else:
+        return "Sangat Tinggi", "red"
 
 def main():
     st.title("Prediksi Risiko Penyakit Jantung menggunakan Naive Bayes")
@@ -71,7 +101,6 @@ def main():
         st.header("Dataset")
         st.write(data)
         
-        # Add distribution visualizations
         col1, col2 = st.columns(2)
         
         with col1:
@@ -153,22 +182,7 @@ def main():
                 st.subheader("Hasil Prediksi")
 
                 prob_high_whr = prediction_prob[1]
-
-                if prob_high_whr < 0.2:
-                    risk_level = "Sangat Rendah"
-                    risk_color = "green"
-                elif prob_high_whr < 0.4:
-                    risk_level = "Rendah"
-                    risk_color = "lightgreen"
-                elif prob_high_whr < 0.6:
-                    risk_level = "Sedang"
-                    risk_color = "yellow"
-                elif prob_high_whr < 0.8:
-                    risk_level = "Tinggi"
-                    risk_color = "orange"
-                else:
-                    risk_level = "Sangat Tinggi"
-                    risk_color = "red"
+                risk_level, risk_color = calculate_risk_level(prob_high_whr, sex, age, family_history, diabetes, smoking)
 
                 st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
                           unsafe_allow_html=True)
@@ -211,3 +225,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
