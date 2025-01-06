@@ -187,11 +187,6 @@ def main():
                 st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
                           unsafe_allow_html=True)
                 
-                st.write(f"Probabilitas Risiko WHR Tinggi: {prob_high_whr:.4f}")
-                st.write(f"Probabilitas Risiko WHR Rendah: {prediction_prob[0]:.4f}")
-
-                whr_status = "Tinggi" if prediction[0] == 1 else "Rendah"
-                st.write(f"Prediksi WHR: {whr_status}")
 
             except Exception as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
