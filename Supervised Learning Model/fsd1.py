@@ -3,12 +3,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import confusion_matrix, classification_report, mean_squared_error
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, mean_squared_error
+from imblearn.over_sampling import SMOTE
+from sklearn.ensemble import StackingClassifier
 
-# Load and preprocess the data
 @st.cache_data
 def load_data():
     data = pd.read_csv("riskchartsampledata.csv", header=None)
@@ -25,35 +28,57 @@ def load_data():
         data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
         label_encoders[col] = le
 
-    X = data_encoded.drop('High WHR', axis=1)
-    y = data_encoded['High WHR']
+    return data, data_encoded, label_encoders
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, 
-        test_size=0.2, 
-        random_state=42, 
-        stratify=data_encoded[['Sex', 'High WHR']]
-    )
+def feature_engineering(data):
+    # Create new features
+    data['Age_numeric'] = data['Age'].apply(lambda x: int(str(x).split('-')[0]) if '-' in str(x) else int(x))
+    data['SBP_numeric'] = data['SBP'].apply(lambda x: int(x.split('-')[0]))
+    data['Tch_numeric'] = data['Tch'].apply(lambda x: int(x.split('-')[0]))
     
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
+    # Create interaction features
+    data['Age_SBP'] = data['Age_numeric'] * data['SBP_numeric']
+    data['Age_Tch'] = data['Age_numeric'] * data['Tch_numeric']
+    
+    return data
 
 @st.cache_resource
-def train_naive_bayes(X_train_scaled, y_train):
-    nb_model = GaussianNB()
-    nb_model.fit(X_train_scaled, y_train)
-    return nb_model
+def train_advanced_model(X, y):
+    # Apply SMOTE for balancing classes
+    smote = SMOTE(random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(X, y)
+    
+    # Define base models
+    rf = RandomForestClassifier(n_estimators=100, random_state=42)
+    xgb = XGBClassifier(n_estimators=100, random_state=42)
+    lr = LogisticRegression(random_state=42)
+    
+    # Define stacking ensemble
+    estimators = [
+        ('rf', rf),
+        ('xgb', xgb),
+        ('lr', lr)
+    ]
+    
+    stacking_model = StackingClassifier(
+        estimators=estimators,
+        final_estimator=LogisticRegression(),
+        cv=5
+    )
+    
+    # Fit the stacking model
+    stacking_model.fit(X_resampled, y_resampled)
+    
+    return stacking_model
 
-def evaluate_model(model, X_test_scaled, y_test):
-    y_pred = model.predict(X_test_scaled)
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test)
     cm = confusion_matrix(y_test, y_pred)
     cr = classification_report(y_test, y_pred, output_dict=True)
+    accuracy = accuracy_score(y_test, y_pred)
     mse = mean_squared_error(y_test, y_pred)
     rmse = np.sqrt(mse)
-    return cm, cr, mse, rmse
+    return cm, cr, accuracy, mse, rmse
 
 def calculate_risk_level(prob_high_whr, sex, age_range, family_history, diabetes, smoking):
     if sex == 'Female':
@@ -61,15 +86,12 @@ def calculate_risk_level(prob_high_whr, sex, age_range, family_history, diabetes
     else:
         base_threshold = 0.5
 
-    # Extract the average age from the age range
     age_start, age_end = map(int, age_range.split('-'))
     avg_age = (age_start + age_end) / 2
 
-    # Adjust threshold based on age
     age_factor = min(avg_age / 100, 1)
     threshold = base_threshold * (1 + age_factor)
-
-    # Adjust threshold based on other risk factors
+    
     if family_history == 'Yes':
         threshold *= 0.9
     if diabetes == 'Yes':
@@ -89,10 +111,28 @@ def calculate_risk_level(prob_high_whr, sex, age_range, family_history, diabetes
         return "Sangat Tinggi", "red"
 
 def main():
-    st.title("Prediksi Risiko Penyakit Jantung menggunakan Naive Bayes")
+    st.title("Supervised Learning Model: Prediksi Risiko Penyakit Jantung")
 
-    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders = load_data()
-    nb_model = train_naive_bayes(X_train_scaled, y_train)
+    data, data_encoded, label_encoders = load_data()
+    
+    # Feature engineering
+    data_engineered = feature_engineering(data_encoded)
+    
+    X = data_engineered.drop('High WHR', axis=1)
+    y = data_engineered['High WHR']
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, 
+        test_size=0.2, 
+        random_state=42, 
+        stratify=data_engineered[['Sex', 'High WHR']]
+    )
+    
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    advanced_model = train_advanced_model(X_train_scaled, y_train)
 
     st.sidebar.title("Navigasi")
     page = st.sidebar.radio("Pilih Halaman", ["Dataset", "Evaluasi", "Prediksi", "Tentang Kami"])
@@ -121,19 +161,22 @@ def main():
 
         st.subheader("Heatmap Korelasi")
         fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(data_encoded.corr(), annot=True, cmap='coolwarm', ax=ax)
+        sns.heatmap(data_engineered.corr(), annot=True, cmap='coolwarm', ax=ax)
         plt.title("Heatmap Korelasi")
         st.pyplot(fig)
 
     elif page == "Evaluasi":
-        st.header("Evaluasi Model Naive Bayes")
+        st.header("Evaluasi Model Lanjutan")
 
-        cm, cr, mse, rmse = evaluate_model(nb_model, X_test_scaled, y_test)
+        cm, cr, accuracy, mse, rmse = evaluate_model(advanced_model, X_test_scaled, y_test)
 
-        st.subheader("Matriks Konfusi")
+        st.subheader("Akurasi Model")
+        st.write(f"Akurasi: {accuracy:.2%}")
+
+        st.subheader("Matrix Confusion")
         fig, ax = plt.subplots(figsize=(8, 6))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        plt.title("Matriks Konfusi - Naive Bayes")
+        plt.title("Matriks Konfusi - Model Lanjutan")
         st.pyplot(fig)
 
         st.subheader("Laporan Klasifikasi")
@@ -175,9 +218,10 @@ def main():
                 for column in encoded_input.columns:
                     encoded_input[column] = label_encoders[column].transform(encoded_input[column])
 
-                scaled_input = scaler.transform(encoded_input)
-                prediction = nb_model.predict(scaled_input)
-                prediction_prob = nb_model.predict_proba(scaled_input)[0]
+                engineered_input = feature_engineering(encoded_input)
+                scaled_input = scaler.transform(engineered_input)
+                prediction = advanced_model.predict(scaled_input)
+                prediction_prob = advanced_model.predict_proba(scaled_input)[0]
 
                 st.subheader("Hasil Prediksi")
 
@@ -187,6 +231,7 @@ def main():
                 st.markdown(f"<h4 style='color: {risk_color}'>Tingkat Risiko: {risk_level}</h4>", 
                           unsafe_allow_html=True)
                 
+                st.write(f"Probabilitas High WHR: {prob_high_whr:.2f}")
 
             except Exception as e:
                 st.error(f"Error dalam pemrosesan input: {str(e)}")
@@ -196,10 +241,10 @@ def main():
         st.header("Tentang Kami")
         st.markdown(
             """
-            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung menggunakan algoritma Naive Bayes. 
-            Model ini mempertimbangkan berbagai faktor seperti usia, jenis kelamin, riwayat keluarga dengan 
-            penyakit kardiovaskular (CVD), diabetes mellitus, rasio lingkar pinggang terhadap pinggul (WHR) 
-            yang tinggi, status merokok, tekanan darah sistolik (SBP), dan kadar kolesterol total (Tch).
+            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung menggunakan model ensemble lanjutan. 
+            Model ini menggabungkan kekuatan dari Random Forest, XGBoost, dan Logistic Regression, 
+            serta menggunakan teknik-teknik seperti SMOTE untuk menangani ketidakseimbangan kelas dan feature engineering 
+            untuk meningkatkan performa prediksi.
             """
         )
 
@@ -220,4 +265,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
