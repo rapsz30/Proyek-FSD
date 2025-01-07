@@ -42,7 +42,6 @@ def load_data():
 
 @st.cache_resource
 def train_random_forest(X_train_scaled, y_train):
-    # Define the parameter grid for RandomizedSearchCV
     param_grid = {
         'n_estimators': [100, 200, 300, 400, 500],
         'max_depth': [3, 5, 7, 9, None],
@@ -53,12 +52,10 @@ def train_random_forest(X_train_scaled, y_train):
 
     rf = RandomForestClassifier(random_state=42)
     
-    # Perform RandomizedSearchCV
     random_search = RandomizedSearchCV(estimator=rf, param_distributions=param_grid, 
                                        n_iter=100, cv=5, random_state=42, n_jobs=-1)
     random_search.fit(X_train_scaled, y_train)
     
-    # Get the best model
     best_rf_model = random_search.best_estimator_
     
     return best_rf_model
@@ -121,20 +118,47 @@ def main():
             st.subheader("Distribusi Gender")
             gender_dist = data['Sex'].value_counts()
             fig, ax = plt.subplots()
-            gender_dist.plot(kind='bar')
+            gender_dist.plot(kind='bar', ax=ax)
             plt.title("Distribusi Gender")
             st.pyplot(fig)
+
+            st.subheader("Distribusi Usia")
+            age_dist = data['Age'].value_counts().sort_index()
+            fig, ax = plt.subplots()
+            age_dist.plot(kind='bar', ax=ax)
+            plt.title("Distribusi Usia")
+            st.pyplot(fig)
+
+            st.subheader("Distribusi Riwayat Keluarga CVD")
+            family_history_dist = data['Family history of CVD'].value_counts()
+            fig, ax = plt.subplots()
+            family_history_dist.plot(kind='bar', ax=ax)
+            plt.title("Distribusi Riwayat Keluarga CVD")
+            st.pyplot(fig)
+            
+
             
         with col2:
             st.subheader("Distribusi WHR")
             whr_dist = data['High WHR'].value_counts()
             fig, ax = plt.subplots()
-            whr_dist.plot(kind='bar')
+            whr_dist.plot(kind='bar', ax=ax)
             plt.title("Distribusi High WHR")
             st.pyplot(fig)
             
-        
-
+            st.subheader("Distribusi Diabetes Mellitus")
+            diabetes_dist = data['Diabetes Mellitus'].value_counts()
+            fig, ax = plt.subplots()
+            diabetes_dist.plot(kind='bar', ax=ax)
+            plt.title("Distribusi Diabetes Mellitus")
+            st.pyplot(fig)
+            
+            st.subheader("Distribusi Status Merokok")
+            smoking_dist = data['Smoking status'].value_counts()
+            fig, ax = plt.subplots()
+            smoking_dist.plot(kind='bar', ax=ax)
+            plt.title("Distribusi Status Merokok")
+            st.pyplot(fig)
         st.subheader("Heatmap Korelasi")
         fig, ax = plt.subplots(figsize=(10, 8))
         sns.heatmap(data_encoded.corr(), annot=True, cmap='coolwarm', ax=ax)
