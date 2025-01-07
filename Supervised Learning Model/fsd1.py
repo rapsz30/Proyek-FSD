@@ -6,11 +6,7 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from xgboost import XGBClassifier
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, mean_squared_error
-from imblearn.over_sampling import SMOTE
-from sklearn.ensemble import StackingClassifier
 
 @st.cache_data
 def load_data():
@@ -28,51 +24,47 @@ def load_data():
         data_encoded[col] = le.fit_transform(data_encoded[col].astype(str))
         label_encoders[col] = le
 
-    return data, data_encoded, label_encoders
+    X = data_encoded.drop('High WHR', axis=1)
+    y = data_encoded['High WHR']
 
-def feature_engineering(data):
-    # Create new features
-    data['Age_numeric'] = data['Age'].apply(lambda x: int(str(x).split('-')[0]) if '-' in str(x) else int(x))
-    data['SBP_numeric'] = data['SBP'].apply(lambda x: int(x.split('-')[0]))
-    data['Tch_numeric'] = data['Tch'].apply(lambda x: int(x.split('-')[0]))
-    
-    # Create interaction features
-    data['Age_SBP'] = data['Age_numeric'] * data['SBP_numeric']
-    data['Age_Tch'] = data['Age_numeric'] * data['Tch_numeric']
-    
-    return data
-
-@st.cache_resource
-def train_advanced_model(X, y):
-    # Apply SMOTE for balancing classes
-    smote = SMOTE(random_state=42)
-    X_resampled, y_resampled = smote.fit_resample(X, y)
-    
-    # Define base models
-    rf = RandomForestClassifier(n_estimators=100, random_state=42)
-    xgb = XGBClassifier(n_estimators=100, random_state=42)
-    lr = LogisticRegression(random_state=42)
-    
-    # Define stacking ensemble
-    estimators = [
-        ('rf', rf),
-        ('xgb', xgb),
-        ('lr', lr)
-    ]
-    
-    stacking_model = StackingClassifier(
-        estimators=estimators,
-        final_estimator=LogisticRegression(),
-        cv=5
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, 
+        test_size=0.2, 
+        random_state=42, 
+        stratify=data_encoded[['Sex', 'High WHR']]
     )
     
-    # Fit the stacking model
-    stacking_model.fit(X_resampled, y_resampled)
-    
-    return stacking_model
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-def evaluate_model(model, X_test, y_test):
-    y_pred = model.predict(X_test)
+    return data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders
+
+@st.cache_resource
+def train_random_forest(X_train_scaled, y_train):
+    # Define the parameter grid for RandomizedSearchCV
+    param_grid = {
+        'n_estimators': [100, 200, 300, 400, 500],
+        'max_depth': [3, 5, 7, 9, None],
+        'min_samples_split': [2, 5, 10],
+        'min_samples_leaf': [1, 2, 4],
+        'max_features': ['auto', 'sqrt', 'log2']
+    }
+
+    rf = RandomForestClassifier(random_state=42)
+    
+    # Perform RandomizedSearchCV
+    random_search = RandomizedSearchCV(estimator=rf, param_distributions=param_grid, 
+                                       n_iter=100, cv=5, random_state=42, n_jobs=-1)
+    random_search.fit(X_train_scaled, y_train)
+    
+    # Get the best model
+    best_rf_model = random_search.best_estimator_
+    
+    return best_rf_model
+
+def evaluate_model(model, X_test_scaled, y_test):
+    y_pred = model.predict(X_test_scaled)
     cm = confusion_matrix(y_test, y_pred)
     cr = classification_report(y_test, y_pred, output_dict=True)
     accuracy = accuracy_score(y_test, y_pred)
@@ -113,26 +105,8 @@ def calculate_risk_level(prob_high_whr, sex, age_range, family_history, diabetes
 def main():
     st.title("Supervised Learning Model: Prediksi Risiko Penyakit Jantung")
 
-    data, data_encoded, label_encoders = load_data()
-    
-    # Feature engineering
-    data_engineered = feature_engineering(data_encoded)
-    
-    X = data_engineered.drop('High WHR', axis=1)
-    y = data_engineered['High WHR']
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, 
-        test_size=0.2, 
-        random_state=42, 
-        stratify=data_engineered[['Sex', 'High WHR']]
-    )
-    
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    advanced_model = train_advanced_model(X_train_scaled, y_train)
+    data, data_encoded, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler, label_encoders = load_data()
+    rf_model = train_random_forest(X_train_scaled, y_train)
 
     st.sidebar.title("Navigasi")
     page = st.sidebar.radio("Pilih Halaman", ["Dataset", "Evaluasi", "Prediksi", "Tentang Kami"])
@@ -158,17 +132,19 @@ def main():
             whr_dist.plot(kind='bar')
             plt.title("Distribusi High WHR")
             st.pyplot(fig)
+            
+        
 
         st.subheader("Heatmap Korelasi")
         fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(data_engineered.corr(), annot=True, cmap='coolwarm', ax=ax)
+        sns.heatmap(data_encoded.corr(), annot=True, cmap='coolwarm', ax=ax)
         plt.title("Heatmap Korelasi")
         st.pyplot(fig)
 
     elif page == "Evaluasi":
-        st.header("Evaluasi Model Lanjutan")
+        st.header("Evaluasi Model Random Forest")
 
-        cm, cr, accuracy, mse, rmse = evaluate_model(advanced_model, X_test_scaled, y_test)
+        cm, cr, accuracy, mse, rmse = evaluate_model(rf_model, X_test_scaled, y_test)
 
         st.subheader("Akurasi Model")
         st.write(f"Akurasi: {accuracy:.2%}")
@@ -176,7 +152,7 @@ def main():
         st.subheader("Matrix Confusion")
         fig, ax = plt.subplots(figsize=(8, 6))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        plt.title("Matriks Konfusi - Model Lanjutan")
+        plt.title("Matriks Konfusi - Random Forest")
         st.pyplot(fig)
 
         st.subheader("Laporan Klasifikasi")
@@ -185,6 +161,17 @@ def main():
         st.subheader("Metrik Evaluasi")
         st.write(f"Mean Squared Error (MSE): {mse:.4f}")
         st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
+
+        st.subheader("Feature Importance")
+        feature_importance = pd.DataFrame({
+            'feature': X_train.columns,
+            'importance': rf_model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.barplot(x='importance', y='feature', data=feature_importance, ax=ax)
+        plt.title("Feature Importance - Random Forest")
+        st.pyplot(fig)
 
     elif page == "Prediksi":
         st.header("Prediksi Risiko Penyakit Jantung")
@@ -218,10 +205,9 @@ def main():
                 for column in encoded_input.columns:
                     encoded_input[column] = label_encoders[column].transform(encoded_input[column])
 
-                engineered_input = feature_engineering(encoded_input)
-                scaled_input = scaler.transform(engineered_input)
-                prediction = advanced_model.predict(scaled_input)
-                prediction_prob = advanced_model.predict_proba(scaled_input)[0]
+                scaled_input = scaler.transform(encoded_input)
+                prediction = rf_model.predict(scaled_input)
+                prediction_prob = rf_model.predict_proba(scaled_input)[0]
 
                 st.subheader("Hasil Prediksi")
 
@@ -241,10 +227,10 @@ def main():
         st.header("Tentang Kami")
         st.markdown(
             """
-            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung menggunakan model ensemble lanjutan. 
-            Model ini menggabungkan kekuatan dari Random Forest, XGBoost, dan Logistic Regression, 
-            serta menggunakan teknik-teknik seperti SMOTE untuk menangani ketidakseimbangan kelas dan feature engineering 
-            untuk meningkatkan performa prediksi.
+            Aplikasi ini dirancang untuk memprediksi risiko penyakit jantung menggunakan algoritma Random Forest. 
+            Model ini mempertimbangkan berbagai faktor seperti usia, jenis kelamin, riwayat keluarga dengan 
+            penyakit kardiovaskular (CVD), diabetes mellitus, rasio lingkar pinggang terhadap pinggul (WHR) 
+            yang tinggi, status merokok, tekanan darah sistolik (SBP), dan kadar kolesterol total (Tch).
             """
         )
 
