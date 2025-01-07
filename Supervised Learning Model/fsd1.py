@@ -136,8 +136,6 @@ def main():
             plt.title("Distribusi Riwayat Keluarga CVD")
             st.pyplot(fig)
             
-
-            
         with col2:
             st.subheader("Distribusi WHR")
             whr_dist = data['High WHR'].value_counts()
@@ -166,6 +164,7 @@ def main():
         st.pyplot(fig)
 
     elif page == "Evaluasi":
+        
         st.header("Evaluasi Model Random Forest")
 
         cm, cr, accuracy, mse, rmse = evaluate_model(rf_model, X_test_scaled, y_test)
