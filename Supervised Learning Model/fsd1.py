@@ -268,9 +268,6 @@ def main():
             - **M. Trendo Rafly Dipu** (23523116)
             """
         )
-        st.markdown("---")
-
-        st.info("Jelajahi aplikasi ini untuk mempelajari lebih lanjut tentang kesehatan jantung Anda!")
-
+      
 if __name__ == "__main__":
     main()
