@@ -1,116 +1,106 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.cluster import DBSCAN
+from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-import seaborn as sns
-import requests
-from io import StringIO
-from sklearn.impute import SimpleImputer
 
-# Function to load data
-@st.cache_data
-def load_data(url):
-    response = requests.get(url)
-    data = pd.read_csv(StringIO(response.text))
-    return data
+# Sidebar Navigation
+menu = st.sidebar.selectbox("Pilih Menu", ["Model", "Tentang Kami"])
 
-# Function to preprocess data
-def preprocess_data(df):
-    # Convert data types
-    df['Tempat Tinggal'] = df['Tempat Tinggal'].astype(int)
-    df['Jumlah Tanggungan Orang Tua'] = df['Jumlah Tanggungan Orang Tua'].astype(int)
-    df['Kendaraan'] = df['Kendaraan'].astype(int)
-    df['Kelayakan Keringanan UKT'] = df['Kelayakan Keringanan UKT'].astype(int)
+if menu == "Model":
+    # Title
+    st.title("Unsupervised Learning with DBSCAN")
 
-    # Convert categorical variables to numerical
-    df['Pekerjaan Orang Tua'] = pd.Categorical(df['Pekerjaan Orang Tua']).codes
-    
-    # Handle missing values
-    imputer = SimpleImputer(strategy='mean')
-    df_imputed = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
-    
-    # Normalize numerical features
-    scaler = StandardScaler()
-    normalized_df = pd.DataFrame(scaler.fit_transform(df_imputed), columns=df.columns)
-    
-    return normalized_df
+    # Load Dataset
+    st.subheader("Upload Dataset")
+    uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
+    if uploaded_file is not None:
+        # Load dataset
+        data = pd.read_csv(uploaded_file)
 
-# Function to perform K-means clustering
-def perform_kmeans(df, n_clusters):
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    clusters = kmeans.fit_predict(df)
-    return clusters, kmeans
+        st.subheader("Preview Dataset")
+        st.dataframe(data.head())
 
-# Function to visualize clusters
-def visualize_clusters(df, clusters, x_col, y_col):
-    plt.figure(figsize=(10, 6))
-    scatter = plt.scatter(df[x_col], df[y_col], c=clusters, cmap='viridis')
-    plt.colorbar(scatter)
-    plt.xlabel(x_col)
-    plt.ylabel(y_col)
-    plt.title(f'K-means Clustering: {x_col} vs {y_col}')
-    st.pyplot(plt)
+        # Features Definition
+        numerical_features = ['Penghasilan Orang Tua', 'Jumlah Tanggungan Orang Tua', 'Kendaraan']
+        categorical_features = ['Tempat Tinggal', 'Pekerjaan Orang Tua']
 
-# Main Streamlit app
-def main():
-    st.title('Unsupervised Learning Model: Klasifikasi Kelayakan Keringanan UKT MAHASISWA')
-    st.write('Kelompok: Sembarang Wes')
-    
-    
-    try:
-        # Load data
-        file_path = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/klasifikasimhs-xwuq9Zr5EncwomoEdAoDI2H4qkHWHA.csv"
-        df = load_data(file_path)
+        # Preprocessing
+        st.subheader("Preprocessing")
+        try:
+            # Encode categorical data
+            encoder = OneHotEncoder(drop='first', handle_unknown='ignore')
+            encoded_categorical = encoder.fit_transform(data[categorical_features])
+            encoded_categorical_df = pd.DataFrame(
+                encoded_categorical.toarray(), 
+                columns=encoder.get_feature_names_out(categorical_features)
+            )
 
-        # Display raw data
-        st.subheader("Raw Data")
-        st.write(df)
+            # Scale numerical data
+            scaler = StandardScaler()
+            scaled_numerical = scaler.fit_transform(data[numerical_features])
+            scaled_numerical_df = pd.DataFrame(scaled_numerical, columns=numerical_features)
 
-        # Preprocess data
-        preprocessed_df = preprocess_data(df)
+            # Combine all features
+            processed_data = pd.concat([scaled_numerical_df, encoded_categorical_df], axis=1)
 
-        # Perform K-means clustering
-        n_clusters = st.slider("Select number of clusters", 2, 10, 3)
-        clusters, kmeans = perform_kmeans(preprocessed_df, n_clusters)
+            st.write("Preprocessed Data:")
+            st.dataframe(processed_data.head())
 
-        # Add cluster labels to the original dataframe
-        df['Cluster'] = clusters
+            # DBSCAN Parameters
+            st.subheader("DBSCAN Parameters")
+            eps = st.slider("Epsilon (eps)", 0.1, 10.0, step=0.1, value=0.5)
+            min_samples = st.slider("Minimum Samples (min_samples)", 1, 20, step=1, value=5)
 
-        # Display cluster statistics
-        st.subheader("Cluster Statistics")
-        for i in range(n_clusters):
-            st.write(f"Cluster {i}:")
-            st.write(df[df['Cluster'] == i].describe())
+            # DBSCAN Clustering
+            st.subheader("DBSCAN Clustering")
+            dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+            clusters = dbscan.fit_predict(processed_data)
 
-        # Visualize clusters
-        st.subheader("Cluster Visualization")
-        x_col = st.selectbox("Select X-axis feature", df.columns[:-2])
-        y_col = st.selectbox("Select Y-axis feature", df.columns[:-2])
-        visualize_clusters(df, clusters, x_col, y_col)
+            # Add clusters to the original data
+            data['Cluster'] = clusters
+            st.write("Clustered Data:")
+            st.dataframe(data)
 
-        # Analyze cluster characteristics
-        st.subheader("Cluster Characteristics")
-        for i in range(n_clusters):
-            st.write(f"Cluster {i}:")
-            cluster_data = df[df['Cluster'] == i]
-            st.write(f"Average Penghasilan Orang Tua: {cluster_data['Penghasilan Orang Tua'].mean():.2f}")
-            st.write(f"Average Jumlah Tanggungan Orang Tua: {cluster_data['Jumlah Tanggungan Orang Tua'].mean():.2f}")
-            st.write(f"Most common Pekerjaan Orang Tua: {cluster_data['Pekerjaan Orang Tua'].mode().values[0]}")
-            st.write(f"Percentage of students eligible for financial aid: {(cluster_data['Kelayakan Keringanan UKT'] == 0).mean() * 100:.2f}%")
+            # PCA for Visualization
+            st.subheader("Cluster Visualization")
+            pca = PCA(n_components=2)
+            reduced_data = pca.fit_transform(processed_data)
+            reduced_df = pd.DataFrame(reduced_data, columns=['PCA1', 'PCA2'])
+            reduced_df['Cluster'] = clusters
 
-        # Correlation heatmap
-        st.subheader("Feature Correlation Heatmap")
-        corr_matrix = df.drop(['Cluster', 'Kelayakan Keringanan UKT'], axis=1).corr()
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', linewidths=0.5)
-        plt.title("Feature Correlation Heatmap")
-        st.pyplot(plt)
+            # Plot Clusters
+            plt.figure(figsize=(10, 6))
+            for cluster in reduced_df['Cluster'].unique():
+                cluster_data = reduced_df[reduced_df['Cluster'] == cluster]
+                plt.scatter(cluster_data['PCA1'], cluster_data['PCA2'], label=f'Cluster {cluster}')
+            plt.legend()
+            plt.xlabel('PCA1')
+            plt.ylabel('PCA2')
+            plt.title('DBSCAN Cluster Visualization')
+            st.pyplot(plt.gcf())
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
+else:
+    # Tentang Kami Page
+    st.header("Tentang Kami")
+    st.markdown(
+        """
+        Aplikasi ini dirancang untuk mempermudah eksplorasi algoritma **DBSCAN** dalam pembelajaran tanpa pengawasan.  
+        Anda dapat mengunggah dataset Anda, menyesuaikan parameter, dan melihat visualisasi cluster yang dihasilkan.
+        """
+    )
 
-if __name__ == "__main__":
-    main()
-
+    st.subheader("Dibuat oleh Kelompok Sembarang Wes:")
+    st.markdown(
+        """
+        - **Mohamad Rafi Hendryansah** (23523064)  
+        - **Afifuddin Mahfud** (23523076)  
+        - **Yusuf Aditya Kresnayana** (23523077)  
+        - **Naufal Rizqy Wardono** (23523097)  
+        - **Mustaqim Adiyatno** (23523107)  
+        - **M. Trendo Rafly Dipu** (23523116)
+        """
+    )
