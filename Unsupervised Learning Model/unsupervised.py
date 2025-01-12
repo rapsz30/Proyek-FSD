@@ -88,7 +88,7 @@ else:
     st.header("Tentang Kami")
     st.markdown(
         """
-        Aplikasi ini dirancang untuk mempermudah eksplorasi algoritma **DBSCAN** dalam pembelajaran tanpa pengawasan.  
+        Aplikasi ini dirancang untuk mempermudah eksplorasi algoritma DBSCAN dalam pembelajaran tanpa pengawasan.  
         Anda dapat mengunggah dataset Anda, menyesuaikan parameter, dan melihat visualisasi cluster yang dihasilkan.
         """
     )
