@@ -12,24 +12,19 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from scipy.sparse import issparse
 
-# Set page config
 st.set_page_config(page_title="Advanced Unsupervised Learning")
 
-# Judul aplikasi
 st.title("Advanced Unsupervised Learning dengan DBSCAN")
 st.write("Aplikasi ini menggunakan DBSCAN untuk menganalisis dataset klasifikasi mahasiswa dengan fitur evaluasi dan visualisasi yang lengkap.")
 
-# Upload file CSV
 uploaded_file = st.file_uploader("Upload dataset Anda (format CSV):", type="csv")
 
 if uploaded_file:
-    # Load dataset
     try:
         data = pd.read_csv(uploaded_file)
         st.write("Dataset yang diunggah:")
         st.dataframe(data)
-        
-        # Data info
+
         st.subheader("Informasi Dataset")
         buffer = io.StringIO()
         data.info(buf=buffer)
@@ -38,10 +33,8 @@ if uploaded_file:
         st.write("Statistik Deskriptif:")
         st.write(data.describe())
 
-        # Preprocessing
         st.subheader("1. Preprocessing Data")
-        
-        # Pemilihan fitur
+
         all_features = data.columns.tolist()
         numerical_features = st.multiselect(
             "Pilih fitur numerik:",
@@ -54,20 +47,17 @@ if uploaded_file:
             default=['Tempat Tinggal', 'Pekerjaan Orang Tua']
         )
 
-        # Handling missing values
         st.write("### Penanganan Missing Values")
         numeric_impute_strategy = st.selectbox(
             "Pilih strategi untuk mengisi missing values numerik:",
             ["mean", "median", "most_frequent"]
         )
-        
-        # Mengisi missing values
+
         data[numerical_features] = data[numerical_features].fillna(
             data[numerical_features].agg(numeric_impute_strategy)
         )
         data[categorical_features] = data[categorical_features].fillna("missing")
 
-        # Preprocessing pipeline
         preprocessor = ColumnTransformer(
             transformers=[
                 ("num", StandardScaler(), numerical_features),
@@ -75,7 +65,6 @@ if uploaded_file:
             ]
         )
 
-        # Parameter tuning dengan metrics
         st.subheader("2. Parameter Tuning")
         col1, col2 = st.columns(2)
         
@@ -84,18 +73,15 @@ if uploaded_file:
         with col2:
             min_samples_value = st.slider("Pilih jumlah minimum sampel (min_samples):", 1, 10, 5)
 
-        # Pipeline DBSCAN
         pipeline = Pipeline([
             ("preprocessor", preprocessor),
             ("dbscan", DBSCAN(eps=eps_value, min_samples=min_samples_value)),
         ])
 
-        # Fit dan prediksi
         st.subheader("3. Clustering dengan DBSCAN")
         X_transformed = preprocessor.fit_transform(data)
         cluster_labels = pipeline.fit_predict(data)
 
-        # Evaluasi model
         st.subheader("4. Evaluasi Model")
         n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
         n_noise = list(cluster_labels).count(-1)
@@ -104,23 +90,18 @@ if uploaded_file:
         st.write(f"Jumlah noise points: {n_noise}")
         
         if n_clusters > 1:
-            # Convert to dense array if sparse
             X_dense = X_transformed.toarray() if issparse(X_transformed) else X_transformed
             silhouette_avg = silhouette_score(X_dense, cluster_labels)
             st.write(f"Silhouette Score: {silhouette_avg:.3f}")
 
-        # Tambahkan hasil clustering ke dataset
         data['Cluster'] = cluster_labels
         st.write("Dataset dengan hasil clustering:")
         st.dataframe(data)
 
-        # Visualisasi yang lebih komprehensif
         st.subheader("5. Visualisasi Hasil")
-        
-        # PCA untuk visualisasi multidimensi
+
         if X_transformed.shape[1] > 2:
             pca = PCA(n_components=2)
-            # Convert to dense array if sparse
             X_dense = X_transformed.toarray() if issparse(X_transformed) else X_transformed
             X_pca = pca.fit_transform(X_dense)
             
@@ -132,13 +113,11 @@ if uploaded_file:
             plt.ylabel('Second Principal Component')
             st.pyplot(fig)
 
-        # Visualisasi distribusi cluster
         if len(numerical_features) >= 2:
             st.write("### Scatter Plot Matrix")
             fig = sns.pairplot(data, vars=numerical_features, hue='Cluster', palette='viridis')
             st.pyplot(fig)
 
-        # Analisis cluster
         st.subheader("6. Analisis Cluster")
         for cluster in sorted(set(cluster_labels)):
             cluster_data = data[data['Cluster'] == cluster]
@@ -146,7 +125,6 @@ if uploaded_file:
             st.write("Statistik cluster:")
             st.write(cluster_data[numerical_features].describe())
 
-        # Export hasil
         st.subheader("7. Export Hasil")
         csv = data.to_csv(index=False)
         st.download_button(
