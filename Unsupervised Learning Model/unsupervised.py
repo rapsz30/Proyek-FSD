@@ -1,106 +1,163 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import io
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.cluster import DBSCAN
-from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.decomposition import PCA
+from scipy.sparse import issparse
 
-# Sidebar Navigation
-menu = st.sidebar.selectbox("Pilih Menu", ["Model", "Tentang Kami"])
+# Set page config
+st.set_page_config(page_title="Advanced Unsupervised Learning")
 
-if menu == "Model":
-    # Title
-    st.title("Unsupervised Learning with DBSCAN")
+# Judul aplikasi
+st.title("Advanced Unsupervised Learning dengan DBSCAN")
+st.write("Aplikasi ini menggunakan DBSCAN untuk menganalisis dataset klasifikasi mahasiswa dengan fitur evaluasi dan visualisasi yang lengkap.")
 
-    # Load Dataset
-    st.subheader("Upload Dataset")
-    uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
-    if uploaded_file is not None:
-        # Load dataset
+# Upload file CSV
+uploaded_file = st.file_uploader("Upload dataset Anda (format CSV):", type="csv")
+
+if uploaded_file:
+    # Load dataset
+    try:
         data = pd.read_csv(uploaded_file)
-
-        st.subheader("Preview Dataset")
-        st.dataframe(data.head())
-
-        # Features Definition
-        numerical_features = ['Penghasilan Orang Tua', 'Jumlah Tanggungan Orang Tua', 'Kendaraan']
-        categorical_features = ['Tempat Tinggal', 'Pekerjaan Orang Tua']
+        st.write("Dataset yang diunggah:")
+        st.dataframe(data)
+        
+        # Data info
+        st.subheader("Informasi Dataset")
+        buffer = io.StringIO()
+        data.info(buf=buffer)
+        st.text(buffer.getvalue())
+        
+        st.write("Statistik Deskriptif:")
+        st.write(data.describe())
 
         # Preprocessing
-        st.subheader("Preprocessing")
-        try:
-            # Encode categorical data
-            encoder = OneHotEncoder(drop='first', handle_unknown='ignore')
-            encoded_categorical = encoder.fit_transform(data[categorical_features])
-            encoded_categorical_df = pd.DataFrame(
-                encoded_categorical.toarray(), 
-                columns=encoder.get_feature_names_out(categorical_features)
-            )
+        st.subheader("1. Preprocessing Data")
+        
+        # Pemilihan fitur
+        all_features = data.columns.tolist()
+        numerical_features = st.multiselect(
+            "Pilih fitur numerik:",
+            all_features,
+            default=['Penghasilan Orang Tua', 'Jumlah Tanggungan Orang Tua', 'Kendaraan']
+        )
+        categorical_features = st.multiselect(
+            "Pilih fitur kategorikal:",
+            [col for col in all_features if col not in numerical_features],
+            default=['Tempat Tinggal', 'Pekerjaan Orang Tua']
+        )
 
-            # Scale numerical data
-            scaler = StandardScaler()
-            scaled_numerical = scaler.fit_transform(data[numerical_features])
-            scaled_numerical_df = pd.DataFrame(scaled_numerical, columns=numerical_features)
+        # Handling missing values
+        st.write("### Penanganan Missing Values")
+        numeric_impute_strategy = st.selectbox(
+            "Pilih strategi untuk mengisi missing values numerik:",
+            ["mean", "median", "most_frequent"]
+        )
+        
+        # Mengisi missing values
+        data[numerical_features] = data[numerical_features].fillna(
+            data[numerical_features].agg(numeric_impute_strategy)
+        )
+        data[categorical_features] = data[categorical_features].fillna("missing")
 
-            # Combine all features
-            processed_data = pd.concat([scaled_numerical_df, encoded_categorical_df], axis=1)
+        # Preprocessing pipeline
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("num", StandardScaler(), numerical_features),
+                ("cat", OneHotEncoder(drop='first', handle_unknown='ignore', sparse_output=False), categorical_features),
+            ]
+        )
 
-            st.write("Preprocessed Data:")
-            st.dataframe(processed_data.head())
+        # Parameter tuning dengan metrics
+        st.subheader("2. Parameter Tuning")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            eps_value = st.slider("Pilih nilai epsilon (eps):", 0.1, 10.0, 2.0, 0.1)
+        with col2:
+            min_samples_value = st.slider("Pilih jumlah minimum sampel (min_samples):", 1, 10, 5)
 
-            # DBSCAN Parameters
-            st.subheader("DBSCAN Parameters")
-            eps = st.slider("Epsilon (eps)", 0.1, 10.0, step=0.1, value=0.5)
-            min_samples = st.slider("Minimum Samples (min_samples)", 1, 20, step=1, value=5)
+        # Pipeline DBSCAN
+        pipeline = Pipeline([
+            ("preprocessor", preprocessor),
+            ("dbscan", DBSCAN(eps=eps_value, min_samples=min_samples_value)),
+        ])
 
-            # DBSCAN Clustering
-            st.subheader("DBSCAN Clustering")
-            dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-            clusters = dbscan.fit_predict(processed_data)
+        # Fit dan prediksi
+        st.subheader("3. Clustering dengan DBSCAN")
+        X_transformed = preprocessor.fit_transform(data)
+        cluster_labels = pipeline.fit_predict(data)
 
-            # Add clusters to the original data
-            data['Cluster'] = clusters
-            st.write("Clustered Data:")
-            st.dataframe(data)
+        # Evaluasi model
+        st.subheader("4. Evaluasi Model")
+        n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
+        n_noise = list(cluster_labels).count(-1)
+        
+        st.write(f"Jumlah cluster yang ditemukan: {n_clusters}")
+        st.write(f"Jumlah noise points: {n_noise}")
+        
+        if n_clusters > 1:
+            # Convert to dense array if sparse
+            X_dense = X_transformed.toarray() if issparse(X_transformed) else X_transformed
+            silhouette_avg = silhouette_score(X_dense, cluster_labels)
+            st.write(f"Silhouette Score: {silhouette_avg:.3f}")
 
-            # PCA for Visualization
-            st.subheader("Cluster Visualization")
+        # Tambahkan hasil clustering ke dataset
+        data['Cluster'] = cluster_labels
+        st.write("Dataset dengan hasil clustering:")
+        st.dataframe(data)
+
+        # Visualisasi yang lebih komprehensif
+        st.subheader("5. Visualisasi Hasil")
+        
+        # PCA untuk visualisasi multidimensi
+        if X_transformed.shape[1] > 2:
             pca = PCA(n_components=2)
-            reduced_data = pca.fit_transform(processed_data)
-            reduced_df = pd.DataFrame(reduced_data, columns=['PCA1', 'PCA2'])
-            reduced_df['Cluster'] = clusters
+            # Convert to dense array if sparse
+            X_dense = X_transformed.toarray() if issparse(X_transformed) else X_transformed
+            X_pca = pca.fit_transform(X_dense)
+            
+            fig, ax = plt.subplots(figsize=(10, 6))
+            scatter = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=cluster_labels, cmap='viridis')
+            plt.colorbar(scatter)
+            plt.title('PCA Visualization of Clusters')
+            plt.xlabel('First Principal Component')
+            plt.ylabel('Second Principal Component')
+            st.pyplot(fig)
 
-            # Plot Clusters
-            plt.figure(figsize=(10, 6))
-            for cluster in reduced_df['Cluster'].unique():
-                cluster_data = reduced_df[reduced_df['Cluster'] == cluster]
-                plt.scatter(cluster_data['PCA1'], cluster_data['PCA2'], label=f'Cluster {cluster}')
-            plt.legend()
-            plt.xlabel('PCA1')
-            plt.ylabel('PCA2')
-            plt.title('DBSCAN Cluster Visualization')
-            st.pyplot(plt.gcf())
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+        # Visualisasi distribusi cluster
+        if len(numerical_features) >= 2:
+            st.write("### Scatter Plot Matrix")
+            fig = sns.pairplot(data, vars=numerical_features, hue='Cluster', palette='viridis')
+            st.pyplot(fig)
+
+        # Analisis cluster
+        st.subheader("6. Analisis Cluster")
+        for cluster in sorted(set(cluster_labels)):
+            cluster_data = data[data['Cluster'] == cluster]
+            st.write(f"### Cluster {cluster} ({'noise' if cluster == -1 else f'size: {len(cluster_data)}'})")
+            st.write("Statistik cluster:")
+            st.write(cluster_data[numerical_features].describe())
+
+        # Export hasil
+        st.subheader("7. Export Hasil")
+        csv = data.to_csv(index=False)
+        st.download_button(
+            label="Download hasil clustering sebagai CSV",
+            data=csv,
+            file_name="hasil_clustering.csv",
+            mime="text/csv",
+        )
+
+    except Exception as e:
+        st.error(f"Terjadi kesalahan dalam pemrosesan data: {str(e)}")
 
 else:
-    # Tentang Kami Page
-    st.header("Tentang Kami")
-    st.markdown(
-        """
-        Aplikasi ini dirancang untuk mempermudah eksplorasi algoritma DBSCAN dalam pembelajaran tanpa pengawasan.  
-        Anda dapat mengunggah dataset Anda, menyesuaikan parameter, dan melihat visualisasi cluster yang dihasilkan.
-        """
-    )
-
-    st.subheader("Dibuat oleh Kelompok Sembarang Wes:")
-    st.markdown(
-        """
-        - **Mohamad Rafi Hendryansah** (23523064)  
-        - **Afifuddin Mahfud** (23523076)  
-        - **Yusuf Aditya Kresnayana** (23523077)  
-        - **Naufal Rizqy Wardono** (23523097)  
-        - **Mustaqim Adiyatno** (23523107)  
-        - **M. Trendo Rafly Dipu** (23523116)
-        """
-    )
+    st.write("Silakan upload dataset Anda terlebih dahulu.")
