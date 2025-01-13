@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import io
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.cluster import DBSCAN
@@ -12,9 +11,9 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from scipy.sparse import issparse
 
-st.set_page_config(page_title="Advanced Unsupervised Learning")
+st.set_page_config(page_title="Unsupervised Learning Model")
 
-st.title("Advanced Unsupervised Learning dengan DBSCAN")
+st.title("Unsupervised Learning Model")
 st.write("Aplikasi ini menggunakan DBSCAN untuk menganalisis dataset klasifikasi mahasiswa dengan fitur evaluasi dan visualisasi yang lengkap.")
 
 uploaded_file = st.file_uploader("Upload dataset Anda (format CSV):", type="csv")
