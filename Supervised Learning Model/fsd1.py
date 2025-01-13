@@ -181,10 +181,6 @@ def main():
         st.subheader("Laporan Klasifikasi")
         st.write(pd.DataFrame(cr).transpose())
 
-        st.subheader("Metrik Evaluasi")
-        st.write(f"Mean Squared Error (MSE): {mse:.4f}")
-        st.write(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
-
         st.subheader("Feature Importance")
         feature_importance = pd.DataFrame({
             'feature': X_train.columns,
